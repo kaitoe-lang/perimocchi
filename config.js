@@ -9,7 +9,7 @@ window.PERI_CONFIG = {
   // ① LINE Developers → LIFF タブ に表示される LIFF ID
   //    例: "2006123456-AbCdEfGh"
   //    空のままだと「あなた」名義のデモ表示になります。
-  liffId: "",
+  liffId: "2011627382-r9CDGTVf",
 
   // ② Firebase コンソール → プロジェクトの設定 → マイアプリ（ウェブ）
   //    の firebaseConfig をそのまま貼り付けてください。
