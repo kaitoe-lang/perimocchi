@@ -433,6 +433,14 @@ var HUES = ["var(--m1)","var(--m2)","var(--m4)","var(--m5)","var(--accent-fill)"
 
 function hueFor(id){ var n=0,i; id=String(id||""); for(i=0;i<id.length;i++) n=(n*31+id.charCodeAt(i))>>>0; return HUES[n%HUES.length]; }
 function pad2(n){ return (n<10?"0":"")+n; }
+/* リッチメニューなどから ?tab=feed の形で開いたときに、そのタブを開く。
+   LIFF はクエリを liff.state 経由で引き渡すので、必ず liff.init() の完了後に読むこと。 */
+function wantedTab(){
+  try{
+    var t=new URLSearchParams(location.search).get("tab");
+    return (t==="home"||t==="feed"||t==="me") ? t : null;
+  }catch(e){ return null; }
+}
 function todayKey(){ var d=new Date(); return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
 function agoText(ms){
   if(!ms) return "たった今";
@@ -1099,6 +1107,7 @@ function boot(){
     }
     if(HAS_DB) subscribePosts();
     if(HAS_LIFF && !me.dept){ markMode(); renderRegister(); return; }
+    var w=wantedTab(); if(w) state.view=w;
     renderAll(); markMode();
   });
 }
