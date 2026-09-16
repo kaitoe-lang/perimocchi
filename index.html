@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ぺりもっちチェックイン</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<style>
+:root{
+  color-scheme: light dark;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<style>
+:root{
+  --ground:#ECEFF2; --surface:#FFFFFF; --surface-2:#F5F7F9; --line:#DCE2E8; --line-soft:#E9EDF1;
+  --ink:#18212B; --ink-2:#55636F; --ink-3:#8595A2;
+  --accent:#B4620F; --accent-fill:#D97A0B; --accent-soft:#FAEEDC; --accent-line:#EBCFA6;
+  --linegreen:#06C755;
+  --m5:#D97A0B; --m4:#EBB05A; --m3:#9FA6AE; --m2:#5E74C4; --m1:#33418A;
+  --good:#2C6E52; --warn:#9A6410; --warn-soft:#FBF0DC; --crit:#96464A;
+  --shadow-sm:0 1px 2px rgba(24,33,43,.07);
+  --shadow:0 1px 2px rgba(24,33,43,.06), 0 10px 28px rgba(24,33,43,.08);
+  --poka-body:#F7DDB0; --poka-line:#8A5E22; --poka-blush:#EBA688;
+  --radius:16px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F1419; --surface:#19212A; --surface-2:#212B35; --line:#2C3843; --line-soft:#242F3A;
+    --ink:#E7ECF1; --ink-2:#A2AFBB; --ink-3:#7A8794;
+    --accent:#E8A55E; --accent-fill:#F0A040; --accent-soft:#33260F; --accent-line:#5A4622;
+    --m5:#F0A040; --m4:#F5C87E; --m3:#B6BCC4; --m2:#7086DE; --m1:#4F63C4;
+    --good:#5DA383; --warn:#D9A64F; --warn-soft:#332A15; --crit:#C5787C;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 28px rgba(0,0,0,.28);
+    --poka-body:#D8B47C; --poka-line:#3D2A0E; --poka-blush:#C4795C;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F1419; --surface:#19212A; --surface-2:#212B35; --line:#2C3843; --line-soft:#242F3A;
+  --ink:#E7ECF1; --ink-2:#A2AFBB; --ink-3:#7A8794;
+  --accent:#E8A55E; --accent-fill:#F0A040; --accent-soft:#33260F; --accent-line:#5A4622;
+  --m5:#F0A040; --m4:#F5C87E; --m3:#B6BCC4; --m2:#7086DE; --m1:#4F63C4;
+  --good:#5DA383; --warn:#D9A64F; --warn-soft:#332A15; --crit:#C5787C;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 10px 28px rgba(0,0,0,.28);
+  --poka-body:#D8B47C; --poka-line:#3D2A0E; --poka-blush:#C4795C;
+}
+
+html,body{height:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  font-size:14px; line-height:1.7; -webkit-font-smoothing:antialiased;
+}
+*,*::before,*::after{box-sizing:border-box}
+button{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+h1,h2,h3,p,ul,ol{margin:0}
+ul{padding:0;list-style:none}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- stage ---------- */
+.stage{height:100%;display:flex;flex-direction:column;align-items:stretch}
+@media(min-width:980px){
+  .stage{flex-direction:row;justify-content:center;gap:34px;padding:26px 24px;align-items:flex-start}
+}
+
+/* ---------- context / demo panel ---------- */
+.ctx{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;gap:12px;flex:0 0 auto}
+.ctx-head{display:flex;align-items:center;gap:10px}
+.ctx-name{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:16px;letter-spacing:.01em}
+.badge{font-size:10.5px;letter-spacing:.08em;font-weight:700;padding:3px 7px;border-radius:5px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+.ctx-gear{margin-left:auto;font-size:12px;color:var(--ink-2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;background:var(--surface-2)}
+.ctx-panel{display:flex;flex-direction:column;gap:14px}
+@media(min-width:980px){
+  .ctx{flex:0 0 306px;border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow-sm);max-height:100%;overflow-y:auto}
+  .ctx-gear{display:none}
+  .ctx-panel[hidden]{display:flex!important}
+}
+.ctx-note{font-size:12.5px;line-height:1.65;color:var(--ink-2)}
+.ctx-note strong{color:var(--ink);font-weight:700}
+.ctl-group{display:flex;flex-direction:column;gap:7px}
+.ctl-label{font-size:10.5px;letter-spacing:.12em;font-weight:700;color:var(--ink-3)}
+.ctl{display:flex;flex-wrap:wrap;gap:7px}
+.ctl button{font-size:12.5px;padding:7px 11px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-2);transition:background .15s,border-color .15s}
+.ctl button:hover{border-color:var(--ink-3)}
+.ctl button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent);font-weight:700}
+
+/* push notification mock */
+.push{border:1px solid var(--line);border-radius:12px;padding:10px 11px;background:var(--surface-2);display:flex;gap:9px;align-items:flex-start}
+.push-ico{width:28px;height:28px;border-radius:8px;background:var(--linegreen);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;flex:0 0 auto;font-family:"Zen Maru Gothic",sans-serif}
+.push-body{min-width:0}
+.push-t{font-size:11px;color:var(--ink-3);display:flex;gap:6px}
+.push-m{font-size:12.5px;line-height:1.55}
+
+/* ---------- phone ---------- */
+.phone{
+  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+  background:var(--surface);position:relative;overflow:hidden;width:100%
+}
+@media(min-width:980px){
+  .phone{flex:0 0 392px;width:392px;height:min(824px,100%);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow)}
+}
+.liffbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line-soft);background:var(--surface-2);font-size:13px}
+.liffbar .x{font-size:17px;color:var(--ink-2);line-height:1}
+.liffbar .who{display:flex;align-items:center;gap:6px;margin:0 auto;font-weight:500}
+.liffdot{width:14px;height:14px;border-radius:4px;background:var(--linegreen);color:#fff;font-size:9px;display:grid;place-items:center;font-weight:700}
+.liffbar .more{color:var(--ink-3);letter-spacing:.1em}
+
+.app{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.screen{padding:18px 16px 26px;display:flex;flex-direction:column;gap:16px}
+
+/* ---------- cards / type ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.card-quiet{background:var(--surface-2);border-color:var(--line-soft)}
+.sec-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.sec-t{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:15.5px;letter-spacing:.01em}
+.sec-s{font-size:11.5px;color:var(--ink-3)}
+.eyebrow{font-size:10.5px;letter-spacing:.14em;font-weight:700;color:var(--ink-3)}
+
+/* ---------- mascot ---------- */
+.poka-wrap{display:flex;gap:13px;align-items:flex-start}
+.peri,.peri-sm,.cta-peri img{background:#FFFFFF;border-radius:14px;box-shadow:0 1px 3px rgba(24,33,43,.10)}
+.peri{height:104px;width:auto;flex:0 0 auto;display:block}
+@media(prefers-reduced-motion:no-preference){ .peri{animation:bob 4.6s ease-in-out infinite} }
+.peri-card{display:flex;gap:11px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface-2)}
+.peri-sm{height:62px;width:auto;flex:0 0 auto;display:block;border-radius:11px}
+.peri-name{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:14px;line-height:1.4}
+.cta-peri{display:flex;align-items:flex-end;gap:11px}
+.cta-peri img{height:88px;width:auto;flex:0 0 auto;border-radius:13px}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-1.2deg)}50%{transform:translateY(-5px) rotate(1.2deg)}}
+.bubble{position:relative;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:11px 13px;font-size:14px;line-height:1.65;flex:1 1 auto;min-width:0}
+.bubble::before{content:"";position:absolute;left:-7px;top:20px;width:12px;height:12px;background:var(--surface-2);border-left:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+.bubble .said{font-family:"Zen Maru Gothic",sans-serif;font-weight:500}
+
+/* ---------- mood picker ---------- */
+.moods{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.mood{display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 3px 9px;border-radius:13px;border:1px solid var(--line);background:var(--surface);transition:border-color .15s,background .15s,transform .12s}
+.mood:hover{border-color:var(--ink-3);transform:translateY(-2px)}
+.mood[aria-pressed="true"]{border-color:currentColor;background:var(--surface-2);box-shadow:inset 0 0 0 1px currentColor}
+.mood .face{width:30px;height:30px;display:block}
+.mood .lbl{font-size:10px;line-height:1.3;text-align:center;color:var(--ink-2);font-weight:500}
+.mood[aria-pressed="true"] .lbl{color:var(--ink);font-weight:700}
+.hint{font-size:11.5px;color:var(--ink-3)}
+
+/* mood pill */
+.mpill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 7px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);font-size:12px;font-weight:700}
+.mpill .face{width:18px;height:18px}
+
+/* ---------- news ---------- */
+.news{display:flex;flex-direction:column;gap:10px}
+.item{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border:1px solid var(--line);border-radius:13px;background:var(--surface)}
+.item-b{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:5px}
+.item-t{font-size:13.5px;font-weight:700;line-height:1.55;text-wrap:balance}
+.item-s{font-size:12px;color:var(--ink-2);line-height:1.6}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--ink-3);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.fav{flex:0 0 auto;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);transition:color .15s,border-color .15s,background .15s}
+.fav svg{width:17px;height:17px;display:block}
+.fav[aria-pressed="true"]{color:var(--accent-fill);border-color:var(--accent-line);background:var(--accent-soft)}
+.disclaim{font-size:11px;color:var(--ink-3);line-height:1.6}
+.disclaim strong{color:var(--warn);font-weight:700}
+.warnbox{border:1px solid var(--accent-line);background:var(--warn-soft);border-radius:10px;padding:9px 11px}
+
+/* ---------- CTA ---------- */
+.cta{background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:11px}
+.cta-t{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:14.5px;line-height:1.6;color:var(--ink);text-wrap:balance}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;border-radius:11px;background:var(--accent-fill);color:#fff;font-weight:700;font-size:14px;box-shadow:var(--shadow-sm);transition:filter .15s}
+.btn:hover{filter:brightness(1.06)}
+.btn-ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:none;font-weight:500}
+.btn-full{width:100%}
+.theme{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--accent);font-weight:700}
+
+/* ---------- timeline ---------- */
+.post{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:14px;display:flex;flex-direction:column;gap:10px}
+.post-h{display:flex;align-items:center;gap:9px}
+.av{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:13px;color:#fff;flex:0 0 auto}
+.post-meta{min-width:0;line-height:1.35}
+.post-name{font-size:13px;font-weight:700}
+.post-sub{font-size:11px;color:var(--ink-3)}
+.post-text{font-size:13.5px;line-height:1.75}
+.photo{border-radius:11px;height:132px;display:flex;align-items:flex-end;padding:9px;border:1px solid var(--line)}
+.photo span{font-size:10px;font-weight:700;letter-spacing:.1em;background:var(--surface);color:var(--ink-3);padding:2px 7px;border-radius:5px;border:1px solid var(--line)}
+.stamps{display:flex;gap:6px;flex-wrap:wrap}
+.stamp{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface-2);font-size:12px;color:var(--ink-2);transition:border-color .15s,background .15s}
+.stamp .n{font-weight:700;font-variant-numeric:tabular-nums}
+.stamp[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+@media(prefers-reduced-motion:no-preference){ .stamp.pop{animation:pop .32s ease} }
+@keyframes pop{40%{transform:scale(1.16)}100%{transform:scale(1)}}
+
+/* ---------- charts ---------- */
+.chart{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y}
+.chart text{font-family:"Zen Kaku Gothic New",sans-serif;font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--surface);font-size:11.5px;font-weight:700;padding:5px 9px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-125%);z-index:5;box-shadow:var(--shadow-sm)}
+.legend-note{font-size:11px;color:var(--ink-3);display:flex;justify-content:space-between;gap:10px}
+.stats{display:flex;gap:10px}
+.stat{flex:1;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface-2)}
+.stat-l{font-size:10.5px;letter-spacing:.08em;font-weight:700;color:var(--ink-3)}
+.stat-v{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:20px;font-variant-numeric:tabular-nums;line-height:1.3}
+.stat-v small{font-size:11px;font-weight:500;color:var(--ink-3);font-family:"Zen Kaku Gothic New",sans-serif}
+
+/* genre bars */
+.gbars{display:flex;flex-direction:column;gap:8px}
+.gbar{display:grid;grid-template-columns:52px 1fr 26px;align-items:center;gap:9px;font-size:12px}
+.gbar .track{height:9px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line-soft);overflow:hidden}
+.gbar .fill{height:100%;background:var(--accent-fill);border-radius:99px}
+.gbar .n{text-align:right;color:var(--ink-2);font-weight:700;font-variant-numeric:tabular-nums}
+
+/* privacy table */
+.who-tbl{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.who-row{display:grid;grid-template-columns:96px 1fr;gap:10px;padding:11px 13px;font-size:12px;border-top:1px solid var(--line-soft);align-items:start}
+.who-row:first-child{border-top:none;background:var(--surface-2)}
+.who-k{font-weight:700;font-size:12px}
+.who-v{color:var(--ink-2);line-height:1.6}
+
+/* status chips */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid}
+.chip-warn{background:var(--warn-soft);border-color:var(--accent-line);color:var(--warn)}
+.chip-good{background:var(--surface-2);border-color:var(--line);color:var(--good)}
+.chip .dot{width:7px;height:7px;border-radius:99px;background:currentColor}
+
+/* manager banner */
+.mgr-banner{background:var(--ink);color:var(--surface);border-radius:var(--radius);padding:14px 15px;display:flex;flex-direction:column;gap:9px}
+.mgr-banner .t{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;font-size:14px}
+.mgr-banner .d{font-size:12px;line-height:1.65;opacity:.82}
+.mgr-banner button{align-self:flex-start;border:1px solid rgba(255,255,255,.34);border-radius:9px;padding:6px 11px;font-size:12px;font-weight:700}
+.nolist{display:flex;flex-direction:column;gap:7px}
+.nolist li{display:flex;gap:8px;font-size:12.5px;color:var(--ink-2);line-height:1.6}
+.nolist .mk{color:var(--ink-3);flex:0 0 auto;font-weight:700}
+
+/* ---------- tab bar ---------- */
+.tabbar{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 8px;color:var(--ink-3);font-size:10.5px;font-weight:700;letter-spacing:.04em}
+.tab svg{width:21px;height:21px;display:block}
+.tab[aria-selected="true"]{color:var(--accent)}
+
+/* ---------- compose sheet ---------- */
+.sheet-bg{position:absolute;inset:0;background:rgba(14,20,26,.44);z-index:8}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-radius:20px 20px 0 0;border-top:1px solid var(--line);padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;box-shadow:0 -10px 30px rgba(14,20,26,.16);max-height:92%;overflow-y:auto}
+.sheet-h{display:flex;align-items:center;gap:10px}
+.sheet-h .sec-t{flex:1}
+input[type="text"]{width:100%;border:1px solid var(--line);border-radius:11px;padding:11px 12px;font:inherit;font-size:15px;background:var(--surface-2);color:var(--ink)}
+input[type="text"]::placeholder{color:var(--ink-3)}
+textarea{width:100%;min-height:98px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;font-size:14px;line-height:1.7;background:var(--surface-2);color:var(--ink)}
+textarea::placeholder{color:var(--ink-3)}
+.sheet-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.count{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.toast{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:9px 16px;border-radius:99px;font-size:12.5px;font-weight:700;z-index:12;box-shadow:var(--shadow)}
+.foot{font-size:11px;color:var(--ink-3);line-height:1.65;border-top:1px solid var(--line-soft);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="ctx">
+    <div class="ctx-head">
+      <span class="ctx-name">ぺりもっちチェックイン</span>
+      <span class="badge">試作</span>
+      <button class="ctx-gear" id="gear" aria-expanded="false" aria-controls="ctxpanel">デモ設定</button>
+    </div>
+    <div class="ctx-panel" id="ctxpanel" hidden>
+      <p class="ctx-note">社内向けLINE LIFFアプリの試作です。社員名・投稿・ニュースは<strong>すべて架空のダミーデータ</strong>で、実在の人物や記事ではありません。入力内容はこの端末のブラウザにのみ保存され、どこにも送信されません。</p>
+
+      <div class="ctl-group">
+        <span class="ctl-label">キャラクター</span>
+        <div class="peri-card">
+          <img class="peri-sm" src="art/peri-front.png" alt="キャラクターのぺりもっち">
+          <div>
+            <div class="peri-name">ぺりもっち</div>
+            <p class="ctx-note">おっとりやさしい。たべるのだいすき。おおきなくちばしのふくろに、なんでもはいっちゃう。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctl-group">
+        <span class="ctl-label">朝のプッシュ通知（イメージ）</span>
+        <div class="push">
+          <div class="push-ico">ぺ</div>
+          <div class="push-body">
+            <div class="push-t"><span>ぺりもっち</span><span class="tnum">8:30</span></div>
+            <div class="push-m">おはよう。今日の気分、どんな感じ？</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctl-group">
+        <span class="ctl-label">接続状態</span>
+        <p class="ctx-note" id="mode">読み込み中…</p>
+        <div class="ctl"><button id="btn-hist">気分の履歴をサンプルで埋める</button></div>
+        <div class="ctl" id="seedwrap" hidden><button id="btn-seed">サンプル投稿を入れる</button></div>
+      </div>
+
+      <div class="ctl-group">
+        <span class="ctl-label">見え方を切り替える</span>
+        <div class="ctl">
+          <button id="btn-mgr" aria-pressed="false">マネージャーに見える画面</button>
+        </div>
+      </div>
+
+      <div class="ctl-group">
+        <span class="ctl-label">状態を作る</span>
+        <div class="ctl">
+          <button id="btn-low" aria-pressed="false">低スコアが続いた状態</button>
+          <button id="btn-reset">最初から</button>
+        </div>
+        <p class="ctx-note">「低スコアが続いた状態」を押すと、本人へのぺりもっちからの声かけと、マネージャー側の匿名アラートが同時に立ち上がります。</p>
+      </div>
+    </div>
+  </aside>
+
+  <div class="phone" id="phone">
+    <div class="liffbar">
+      <span class="x" aria-hidden="true">✕</span>
+      <span class="who"><span class="liffdot" aria-hidden="true">L</span>ぺりもっち</span>
+      <span class="more" aria-hidden="true">⋯</span>
+    </div>
+
+    <main class="app" id="app">
+      <section class="screen" id="tab-home" aria-label="ホーム"></section>
+      <section class="screen" id="tab-feed" aria-label="みんな" hidden></section>
+      <section class="screen" id="tab-me" aria-label="じぶん" hidden></section>
+      <section class="screen" id="tab-mgr" aria-label="マネージャー表示" hidden></section>
+    </main>
+
+    <nav class="tabbar" id="tabbar" role="tablist" aria-label="画面切り替え"></nav>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============ data ============ */
+var MOODS = [
+  {v:5, label:"げんき"},
+  {v:4, label:"いいかんじ"},
+  {v:3, label:"ふつう"},
+  {v:2, label:"しんどい"},
+  {v:1, label:"つらい"}
+];
+var moodColor = function(v){ return "var(--m" + v + ")"; };
+var moodLabel = function(v){ for(var i=0;i<MOODS.length;i++) if(MOODS[i].v===v) return MOODS[i].label; return ""; };
+
+var NEWS = [
+  {id:"n1", g:"動物", tone:"bright", t:"駅で迷子になった柴犬、駅員が3時間見守り 飼い主と再会",
+   s:"改札の内側でじっと座り込んでいた柴犬を、駅員が交代で見守り。夕方に息を切らして駆けつけた飼い主のもとへ戻りました。"},
+  {id:"n2", g:"地域", tone:"bright", t:"閉店予定だった銭湯、常連客のクラウドファンディングで存続が決定",
+   s:"築58年、番台のタイルもそのまま。目標額は公開から11日で到達し、支援者の8割が半径2km以内の住民でした。"},
+  {id:"n3", g:"くらし", tone:"bright", t:"小学生が育てたひまわり、種になって500km先の学校へ",
+   s:"6年生が花壇で採った種を封筒に小分けし、交流のある学校へ郵送。来年は向こうの校庭で咲く予定です。"},
+  {id:"n4", g:"感動", tone:"warm", t:"台南の食堂、22年続く「お腹がすいた人はお代いりません」の貼り紙",
+   s:"店主いわく「うちも昔、同じことをしてもらった」。張り紙は色あせるたびに、新しい紙に書き直されています。"},
+  {id:"n5", g:"動物", tone:"calm", t:"引退した競走馬、保護牧場でセラピー馬に 週末は子どもたちと過ごす",
+   s:"走ることをやめた後の10年をどう過ごすか。ブラシをかけられている間、ずっと目を細めているそうです。"},
+  {id:"n6", g:"くらし", tone:"calm", t:"夜勤明けのパン屋が焼く「6時のパン」、無言で並ぶ常連たち",
+   s:"開店前の6時、看板もないのに5人ほどが待っています。誰も話しかけず、焼き上がりの匂いだけが合図です。"}
+];
+
+var SEED_POSTS = [
+  {id:"p1", name:"佐藤 みなみ", dept:"カスタマーサクセス", hue:"var(--m2)", ago:"2時間前",
+   text:"近所の猫が、半年かけてやっと撫でさせてくれました。今日はもう勝った気分でいます。",
+   photo:"linear-gradient(135deg,#C9D8E4,#8FA6B8)",
+   r:{clap:6,heart:12,smile:4,party:1}},
+  {id:"p2", name:"Wei-Chen", dept:"プロダクト（台北）", hue:"var(--m5)", ago:"4時間前",
+   text:"日本チームにパイナップルケーキを送りました。会議前の3分、全員が無言で食べていたのが面白かったです。",
+   photo:null, r:{clap:3,heart:9,smile:11,party:2}},
+  {id:"p3", name:"田中 航", dept:"セールス", hue:"var(--m1)", ago:"昨日",
+   text:"半年追いかけていた案件で、担当の方から「あなたでよかった」と言われました。受注はまだですが、今日はそれで十分です。",
+   photo:null, r:{clap:18,heart:14,smile:5,party:7}},
+  {id:"p4", name:"Emily", dept:"マーケティング", hue:"var(--m4)", ago:"昨日",
+   text:"今日のランチ自慢：会社の下の定食屋、日替わりが唐揚げの日だけ10分早く出るのがコツです。",
+   photo:"linear-gradient(135deg,#EBD3AE,#C99E6A)",
+   r:{clap:2,heart:6,smile:9,party:0}}
+];
+var STAMPS = [{k:"clap",e:"👏"},{k:"heart",e:"💚"},{k:"smile",e:"😊"},{k:"party",e:"🎉"}];
+var ZERO_R = {clap:0,heart:0,smile:0,party:0};
+var TOPIC = "今日のランチ自慢";
+
+var TEAM = [
+  {w:"7/28",v:3.8},{w:"8/4",v:3.9},{w:"8/11",v:3.6},{w:"8/18",v:3.7},
+  {w:"8/25",v:3.5},{w:"9/1",v:3.4},{w:"9/8",v:3.6},{w:"9/15",v:3.2}
+];
+var TEAM_THRESHOLD = 3.4;
+
+/* ============ state ============ */
+var BASE_LOG = [4,3,4,5,3,2,3,4,4,3];
+var LOW_LOG  = [4,3,4,5,3,3,2,2,1,2];
+
+function weekdayLabels(n){
+  var out=[], d=new Date(), guard=0;
+  while(out.length<n && guard<90){
+    d.setDate(d.getDate()-1); guard++;
+    var wd=d.getDay();
+    if(wd!==0 && wd!==6) out.unshift((d.getMonth()+1)+"/"+d.getDate());
+  }
+  return out;
+}
+
+var state = {
+  view:"home", mood:null, moodLog:{}, favs:{}, posts:SEED_POSTS.slice(), mine:{},
+  low:false, quiet:false, mgr:false, counts:{}
+};
+SEED_POSTS.forEach(function(p){ state.counts[p.id]=Object.assign({},p.r); });
+
+var KEY="poka.v1";
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify({mood:state.mood,moodLog:state.moodLog,favs:state.favs,mine:state.mine,counts:state.counts,extra:state.posts.filter(function(p){return p.own;})})); }catch(e){} }
+function load(){
+  try{
+    var raw=localStorage.getItem(KEY); if(!raw) return;
+    var o=JSON.parse(raw);
+    if(typeof o.mood==="number") state.mood=o.mood;
+    if(o.moodLog) state.moodLog=o.moodLog;
+    if(o.favs) state.favs=o.favs;
+    if(o.mine) state.mine=o.mine;
+    if(o.counts) Object.keys(o.counts).forEach(function(k){ state.counts[k]=o.counts[k]; });
+    if(Array.isArray(o.extra)) o.extra.forEach(function(p){ state.posts.unshift(p); });
+  }catch(e){}
+}
+/* ============ identity & backend ============ */
+var CFG = window.PERI_CONFIG || {};
+var HAS_LIFF=false, HAS_DB=false, db=null, unsubPosts=null;
+var me = { userId:"local", name:"あなた", dept:"" };
+var DEPTS = ["マーケティング","セールス","カスタマーサクセス","プロダクト","コーポレート","その他"];
+var HUES = ["var(--m1)","var(--m2)","var(--m4)","var(--m5)","var(--accent-fill)"];
+
+function hueFor(id){ var n=0,i; id=String(id||""); for(i=0;i<id.length;i++) n=(n*31+id.charCodeAt(i))>>>0; return HUES[n%HUES.length]; }
+function pad2(n){ return (n<10?"0":"")+n; }
+function todayKey(){ var d=new Date(); return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
+function agoText(ms){
+  if(!ms) return "たった今";
+  var s=(Date.now()-ms)/1000;
+  if(s<60) return "たった今";
+  if(s<3600) return Math.floor(s/60)+"分前";
+  if(s<86400) return Math.floor(s/3600)+"時間前";
+  if(s<172800) return "昨日";
+  return Math.floor(s/86400)+"日前";
+}
+
+function dbAddPost(text, photo){
+  return db.collection("posts").add({
+    userId:me.userId, name:me.name, dept:me.dept, text:text,
+    photo:photo||null, r:Object.assign({},ZERO_R), createdAt:Date.now()
+  });
+}
+function dbReact(postId, key, delta){
+  var u={}; u["r."+key]=firebase.firestore.FieldValue.increment(delta);
+  return db.collection("posts").doc(postId).update(u);
+}
+/* 気分ログは意図的に Firestore へ送っていません。
+   共有DBに置くと、氏名つきの投稿と userId で結合できてしまい、
+   画面上の「本人にしか見えません」という約束が成立しなくなるためです。
+   気分はこの端末の localStorage にのみ保存します。 */
+function moodSeries(){
+  return Object.keys(state.moodLog).sort().slice(-12).map(function(k){
+    return { date:k, value:state.moodLog[k],
+             label: parseInt(k.slice(4,6),10)+"/"+parseInt(k.slice(6,8),10) };
+  });
+}
+function subscribePosts(){
+  if(unsubPosts) unsubPosts();
+  unsubPosts = db.collection("posts").orderBy("createdAt","desc").limit(50).onSnapshot(function(sn){
+    var arr=[];
+    sn.forEach(function(d){
+      var v=d.data()||{};
+      arr.push({ id:d.id, name:v.name||"名無し", dept:v.dept||"", hue:hueFor(v.userId||d.id),
+                 ago:agoText(v.createdAt), text:v.text||"", photo:v.photo||null, own:v.userId===me.userId });
+      state.counts[d.id]=Object.assign({},ZERO_R,v.r||{});
+    });
+    state.posts=arr; renderFeed();
+  }, function(e){ console.warn("posts subscribe failed", e); });
+}
+function seedSamples(){
+  var b=db.batch();
+  SEED_POSTS.forEach(function(p,i){
+    b.set(db.collection("posts").doc(), {
+      userId:"sample"+i, name:p.name, dept:p.dept, text:p.text,
+      photo:p.photo, r:Object.assign({},p.r), createdAt: Date.now()-(i+1)*3600000
+    });
+  });
+  return b.commit();
+}
+
+/* ============ svg helpers ============ */
+function faceSVG(v, cls){
+  var eyes = (v===5)
+    ? '<path d="M8 12.5 q2.6 -3.2 5.2 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M14.8 12.5 q2.6 -3.2 5.2 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'
+    : '<circle cx="10.4" cy="12" r="1.5" fill="currentColor"/><circle cx="17.6" cy="12" r="1.5" fill="currentColor"/>';
+  var mouth = {5:"M9 16 q5 5.4 10 0", 4:"M10.2 16.4 q3.8 3.4 7.6 0", 3:"M10.6 17.4 h6.8", 2:"M10.2 18.4 q3.8 -2.8 7.6 0", 1:"M10 19 q4 -4.4 8 0"}[v];
+  return '<svg viewBox="0 0 28 28" class="face '+(cls||"")+'" aria-hidden="true">'
+    + '<circle cx="14" cy="14" r="12.4" fill="none" stroke="currentColor" stroke-width="1.7"/>'
+    + eyes
+    + '<path d="'+mouth+'" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'
+    + '</svg>';
+}
+
+var PERI_ALT = {
+  front:"正面を向いて立っているぺりもっち", side:"くちばしのふくろを見せているぺりもっち",
+  shout:"大きな口を開けてよろこんでいるぺりもっち", fish:"ふくろに魚を入れているぺりもっち",
+  blank:"ぼんやりしているぺりもっち", back:"背中を向けているぺりもっち",
+  walk:"ぺたぺた歩いているぺりもっち", tired:"うつぶせで休んでいるぺりもっち"
+};
+function mascot(pose){
+  return '<img class="peri" src="art/peri-'+pose+'.png" alt="'+PERI_ALT[pose]+'">';
+}
+
+var heartSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.4 3.9 12.3a5 5 0 0 1 7.1-7.1l1 1 1-1a5 5 0 1 1 7.1 7.1Z" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+
+var TAB_ICONS = {
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg>',
+  feed:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.1A8 8 0 1 1 21 12Z"/></svg>',
+  me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>'
+};
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+/* ============ mascot copy ============ */
+function mascotLine(){
+  if(state.low && state.quiet) return {pose:"tired", say:"わかった。ぼくもここで休んでるね。おなかすいたら言って。"};
+  if(state.low) return {pose:"fish", say:"ここ数日、しんどい日が続いてるみたいだね。無理に元気を出さなくて大丈夫。とりあえず魚、持ってきたよ。"};
+  if(state.mood===null) return {pose:"front", say:"おはよう。今日の気分、どんな感じ？"};
+  var poses = {5:"shout", 4:"side", 3:"blank", 2:"fish", 1:"tired"};
+  var says = {
+    5:"いいね、その調子。明るい話をふくろいっぱいに入れてきたよ。",
+    4:"よかった。読みやすいものを3つ、ふくろから出すね。",
+    3:"ふつうの日も、ちゃんといい日。軽めのものを選んでおいたよ。",
+    2:"しんどいね。とりあえず魚、持ってきたよ。今日はゆっくりめの話にしたから。",
+    1:"話してくれてありがとう。今日はぼくも一緒にのびてる。何もしなくていい日にしよう。"
+  };
+  return {pose:poses[state.mood], say:says[state.mood]};
+}
+function newsNote(){
+  if(state.mood>=4) return "元気な日なので、明るい話題を多めにしています";
+  if(state.mood===3) return "軽めの話題を中心に選んでいます";
+  return "今日はゆっくり読める、静かな話題を多めにしています";
+}
+function pickNews(){
+  var order = state.mood>=4 ? ["bright","warm","calm"] : (state.mood===3 ? ["warm","bright","calm"] : ["calm","warm","bright"]);
+  return NEWS.slice().sort(function(a,b){ return order.indexOf(a.tone)-order.indexOf(b.tone); }).slice(0,3);
+}
+
+/* ============ render: home ============ */
+function renderHome(){
+  var m = mascotLine();
+  var h = "";
+  h += '<div class="card"><div class="poka-wrap">'+mascot(m.pose)
+     + '<div class="bubble"><p class="said">'+esc(m.say)+'</p></div></div>';
+
+  if(state.low){
+    h += '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'
+       + '<button class="btn btn-full" data-act="consult">産業医・人事に相談する</button>'
+       + (state.quiet ? '' : '<button class="btn btn-ghost btn-full" data-act="later">今はそっとしておいて</button>')
+       + '<p class="disclaim">このアプリは医療的な診断や助言を行うものではありません。相談内容は、あなたが同意した場合にのみ担当者に共有されます。</p>'
+       + '</div>';
+  } else {
+    h += '<div style="margin-top:15px;display:flex;flex-direction:column;gap:10px">'
+       + '<div class="moods" role="group" aria-label="今日の気分">';
+    MOODS.forEach(function(mo){
+      h += '<button class="mood" data-mood="'+mo.v+'" aria-pressed="'+(state.mood===mo.v)+'" style="color:'+moodColor(mo.v)+'">'
+         + faceSVG(mo.v) + '<span class="lbl">'+esc(mo.label)+'</span></button>';
+    });
+    h += '</div><p class="hint">'+(state.mood===null?"ワンタップだけ。あとから変えられます。":"タップし直せば、今日の記録を変えられます。")+'</p></div>';
+  }
+  h += '</div>';
+
+  if(state.mood!==null || state.low){
+    var list = pickNews();
+    h += '<div style="display:flex;flex-direction:column;gap:11px">'
+       + '<div class="sec-h"><h2 class="sec-t">今日のあなたに</h2><span class="sec-s">'+esc(newsNote())+'</span></div>'
+       + '<div class="news">';
+    list.forEach(function(n){
+      var on = !!state.favs[n.id];
+      h += '<article class="item"><div class="item-b">'
+         + '<span class="tag">'+esc(n.g)+'</span>'
+         + '<h3 class="item-t">'+esc(n.t)+'</h3>'
+         + '<p class="item-s">'+esc(n.s)+'</p></div>'
+         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="'+on+'" aria-label="'+(on?"お気に入りから外す":"お気に入りに入れる")+'">'+heartSVG+'</button>'
+         + '</article>';
+    });
+    h += '</div><p class="disclaim">※ 記事はすべて架空のサンプルです。本番ではニュースAPIから収集し、AIがほっこり度の判定・要約・不適切な記事の除外を行う想定です。</p></div>';
+
+    h += '<div class="cta">'
+       + '<span class="eyebrow">よみおわったら</span>'
+       + '<div class="cta-peri">' + '<img src="art/peri-walk.png" alt="'+PERI_ALT.walk+'">'
+       + '<p class="cta-t">あなたの「いいこと」も、ぺりもっちのふくろに入れてみませんか？</p></div>'
+       + '<span class="theme">今日のお題：'+esc(TOPIC)+'</span>'
+       + '<button class="btn btn-full" data-act="compose">今日のいいことを書く</button>'
+       + '</div>';
+  }
+  document.getElementById("tab-home").innerHTML = h;
+}
+
+/* ============ render: first launch ============ */
+function renderRegister(){
+  var h = '<div class="card"><div class="poka-wrap">'+mascot("front")
+    + '<div class="bubble"><p class="said">はじめまして。ぼくはぺりもっち。よかったら、どのチームか教えて。</p></div></div>'
+    + '<div style="margin-top:16px;display:flex;flex-direction:column;gap:14px">'
+    + '<div><div class="ctl-label" style="margin-bottom:7px">タイムラインに出るなまえ</div>'
+    + '<input type="text" id="reg-name" maxlength="20" value="'+esc(me.name)+'" placeholder="ぺりもっち好き">'
+    + '<p class="disclaim" style="margin-top:6px">初期値はLINEの表示名です。<strong>本名でなくて構いません。</strong>ニックネームをおすすめします。あとから変えられます。</p></div>'
+    + '<div><div class="ctl-label" style="margin-bottom:7px">チーム（選ぶとはじまります）</div><div class="ctl">'
+    + DEPTS.map(function(d){ return '<button class="stamp" data-dept="'+esc(d)+'">'+esc(d)+'</button>'; }).join("")
+    + '</div></div>'
+    + '<p class="disclaim">なまえとチームは、タイムラインの表示にだけ使います。気分の記録には紐付きません。</p>'
+    + '</div></div>';
+  document.getElementById("tab-home").innerHTML = h;
+  ["feed","me","mgr"].forEach(function(k){ document.getElementById("tab-"+k).hidden=true; });
+  document.getElementById("tab-home").hidden=false;
+  document.getElementById("tabbar").hidden=true;
+}
+
+/* ============ render: feed ============ */
+function renderFeed(){
+  var h = '<div class="card card-quiet" style="display:flex;flex-direction:column;gap:9px">'
+        + '<span class="eyebrow">きょうのお題</span>'
+        + '<div class="cta-peri"><img src="art/peri-front.png" alt="'+PERI_ALT.front+'">'
+        + '<p class="cta-t">'+esc(TOPIC)+'</p></div>'
+        + '<button class="btn btn-full" data-act="compose">書いてみる</button></div>';
+
+  h += '<div class="sec-h"><h2 class="sec-t">みんなのいいこと</h2><span class="sec-s">社内タイムライン</span></div>';
+  h += '<div style="display:flex;flex-direction:column;gap:11px">';
+  state.posts.forEach(function(p){
+    var c = state.counts[p.id] || {};
+    h += '<article class="post">'
+       + '<div class="post-h"><div class="av" style="background:'+p.hue+'">'+esc(p.name.trim().charAt(0))+'</div>'
+       + '<div class="post-meta"><div class="post-name">'+esc(p.name)+'</div>'
+       + '<div class="post-sub">'+esc(p.dept)+' · '+esc(p.ago)+'</div></div></div>'
+       + '<p class="post-text">'+esc(p.text)+'</p>';
+    if(p.photo) h += '<div class="photo" style="background:'+p.photo+'"><span>写真</span></div>';
+    h += '<div class="stamps">';
+    STAMPS.forEach(function(s){
+      var n = c[s.k]||0, mine = !!(state.mine[p.id]&&state.mine[p.id][s.k]);
+      h += '<button class="stamp" data-stamp="'+p.id+'|'+s.k+'" aria-pressed="'+mine+'" aria-label="'+s.e+' のリアクション '+n+'件">'
+         + '<span aria-hidden="true">'+s.e+'</span><span class="n">'+n+'</span></button>';
+    });
+    h += '</div></article>';
+  });
+  h += '</div><p class="disclaim">'+(HAS_DB ? '※ 投稿は社内で共有されています。' : '※ 表示されている氏名・部署・投稿はすべて架空のダミーデータです。')+'</p>';
+  document.getElementById("tab-feed").innerHTML = h;
+}
+
+/* ============ charts ============ */
+function moodChart(){
+  var vals, labels, series = state.low ? [] : moodSeries();
+  if(series.length){
+    vals   = series.map(function(m){ return m.value; });
+    labels = series.map(function(m){ return m.label; });
+    if(series[series.length-1].date===todayKey()) labels[labels.length-1]="今日";
+  } else {
+    vals = (state.low ? LOW_LOG : BASE_LOG).slice();
+    labels = weekdayLabels(vals.length);
+    if(state.mood!==null){ vals.push(state.mood); labels.push("今日"); }
+  }
+
+  var W=320,H=158,L=24,R=12,T=10,B=26;
+  var n=vals.length, iw=W-L-R, ih=H-T-B;
+  var x=function(i){ return L + (n===1?iw/2:i*iw/(n-1)); };
+  var y=function(v){ return T + (5-v)/4*ih; };
+
+  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="自分の気分の推移。縦軸は1（つらい）から5（げんき）。">';
+  [1,2,3,4,5].forEach(function(v){
+    s+='<line x1="'+L+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
+    s+='<text x="'+(L-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
+  });
+  var pts = vals.map(function(v,i){ return x(i)+","+y(v); }).join(" ");
+  s+='<polyline points="'+pts+'" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>';
+  vals.forEach(function(v,i){
+    s+='<circle cx="'+x(i)+'" cy="'+y(v)+'" r="5" fill="'+moodColor(v)+'" stroke="var(--surface)" stroke-width="2"/>';
+  });
+  [0, Math.floor((n-1)/2), n-1].filter(function(v,i,a){return a.indexOf(v)===i;}).forEach(function(i){
+    var anchor = i===0?"start":(i===n-1?"end":"middle");
+    s+='<text x="'+x(i)+'" y="'+(H-8)+'" text-anchor="'+anchor+'" font-size="9.5" fill="var(--ink-3)">'+esc(labels[i])+'</text>';
+  });
+  vals.forEach(function(v,i){
+    s+='<rect class="hit" data-i="'+i+'" x="'+(x(i)-9)+'" y="'+T+'" width="18" height="'+ih+'" fill="transparent"><title>'+esc(labels[i])+'　'+moodLabel(v)+'（'+v+'）</title></rect>';
+  });
+  s+='</svg>';
+  return {svg:s, vals:vals, labels:labels};
+}
+
+function teamChart(){
+  var W=320,H=150,L=24,R=12,T=12,B=24;
+  var n=TEAM.length, iw=W-L-R, ih=H-T-B;
+  var x=function(i){ return L + i*iw/(n-1); };
+  var y=function(v){ return T + (5-v)/4*ih; };
+  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="チーム平均の元気度の週次推移。縦軸は1から5。">';
+  [1,3,5].forEach(function(v){
+    s+='<line x1="'+L+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
+    s+='<text x="'+(L-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
+  });
+  var area = TEAM.map(function(d,i){ return x(i)+","+y(d.v); }).join(" ");
+  s+='<polygon points="'+L+','+(H-B)+' '+area+' '+(W-R)+','+(H-B)+'" fill="var(--accent-fill)" fill-opacity=".14" stroke="none"/>';
+  s+='<polyline points="'+area+'" fill="none" stroke="var(--accent-fill)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+  s+='<line x1="'+L+'" y1="'+y(TEAM_THRESHOLD)+'" x2="'+(W-R)+'" y2="'+y(TEAM_THRESHOLD)+'" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="4 3"/>';
+  s+='<text x="'+(W-R)+'" y="'+(y(TEAM_THRESHOLD)-5)+'" text-anchor="end" font-size="9.5" fill="var(--warn)" font-weight="700">注意ライン 3.4</text>';
+  var last=TEAM[n-1];
+  s+='<circle cx="'+x(n-1)+'" cy="'+y(last.v)+'" r="5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"/>';
+  s+='<text x="'+(W-R)+'" y="'+(y(last.v)+18)+'" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--ink)">'+last.v.toFixed(1)+'</text>';
+  s+='<text x="'+L+'" y="'+(H-7)+'" font-size="9.5" fill="var(--ink-3)">'+esc(TEAM[0].w)+'</text>';
+  s+='<text x="'+(W-R)+'" y="'+(H-7)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+esc(last.w)+'</text>';
+  s+='</svg>';
+  return s;
+}
+
+/* ============ render: me ============ */
+function renderMe(){
+  var mc = moodChart();
+  var vals = mc.vals;
+  var recent = vals.slice(-5);
+  var avg = recent.reduce(function(a,b){return a+b;},0)/recent.length;
+
+  var genres = {};
+  Object.keys(state.favs).forEach(function(id){
+    if(!state.favs[id]) return;
+    var n = NEWS.filter(function(x){return x.id===id;})[0];
+    if(n) genres[n.g] = (genres[n.g]||0)+1;
+  });
+  var base = {"動物":4,"感動":3,"地域":2,"くらし":1};
+  Object.keys(base).forEach(function(k){ genres[k]=(genres[k]||0)+base[k]; });
+  var gk = Object.keys(genres).sort(function(a,b){ return genres[b]-genres[a]; });
+  var gmax = Math.max.apply(null, gk.map(function(k){return genres[k];}));
+
+  var h = '';
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:13px">'
+     + '<div class="sec-h"><h2 class="sec-t">気分の推移</h2><span class="sec-s">'+((!state.low && moodSeries().length) ? 'あなたの記録（'+vals.length+'回）' : 'サンプル履歴（'+vals.length+'回分）')+'</span></div>'
+     + '<div style="position:relative">'+mc.svg+'</div>'
+     + '<p class="legend-note"><span>5 = げんき</span><span>1 = つらい</span></p>'
+     + '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">直近5回の平均</div><div class="stat-v">'+avg.toFixed(1)+' <small>/ 5</small></div></div>'
+     + '<div class="stat"><div class="stat-l">今日の記録</div><div class="stat-v">'+(state.mood!==null?esc(moodLabel(state.mood)):'<small>まだです</small>')+'</div></div>'
+     + '</div>'
+     + '<p class="disclaim">このグラフは<strong>あなたにしか見えません</strong>。気分の記録は共有データベースに送らず、この端末の中にだけ保存しています。</p>'
+     + '</div>';
+
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:12px">'
+     + '<div class="sec-h"><h2 class="sec-t">あなたの好み</h2><span class="sec-s">お気に入りから学習</span></div>'
+     + '<div class="gbars">';
+  gk.forEach(function(k){
+    h += '<div class="gbar"><span>'+esc(k)+'</span>'
+       + '<span class="track"><span class="fill" style="width:'+Math.round(genres[k]/gmax*100)+'%"></span></span>'
+       + '<span class="n">'+genres[k]+'</span></div>';
+  });
+  h += '</div><p class="disclaim">気分スコアとお気に入りジャンルの相関を定期的に学習し、配信するニュースの出し分けに反映します。</p></div>';
+
+  var favIds = Object.keys(state.favs).filter(function(k){ return state.favs[k]; });
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
+     + '<div class="sec-h"><h2 class="sec-t">お気に入り</h2><span class="sec-s">'+favIds.length+'件</span></div>';
+  if(favIds.length===0){
+    h += '<div class="cta-peri"><img src="art/peri-back.png" alt="'+PERI_ALT.back+'">'
+       + '<p class="disclaim">まだありません。ホームのニュースの♡を押すと、ぺりもっちのふくろに貯まっていきます。</p></div>';
+  } else {
+    h += '<div class="news">';
+    favIds.forEach(function(id){
+      var n = NEWS.filter(function(x){return x.id===id;})[0]; if(!n) return;
+      h += '<article class="item"><div class="item-b"><span class="tag">'+esc(n.g)+'</span>'
+         + '<h3 class="item-t">'+esc(n.t)+'</h3></div>'
+         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="true" aria-label="お気に入りから外す">'+heartSVG+'</button></article>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+
+  if(HAS_LIFF){
+    h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
+       + '<div class="sec-h"><h2 class="sec-t">タイムラインに出るなまえ</h2></div>'
+       + '<input type="text" id="me-name" maxlength="20" value="'+esc(me.name)+'">'
+       + '<button class="btn btn-ghost btn-full" data-act="rename">なまえを変える</button>'
+       + '<p class="disclaim">これから書く投稿に反映されます。本名でなくて構いません。</p></div>';
+  }
+
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:12px">'
+     + '<div class="sec-h"><h2 class="sec-t">誰に何が見えるか</h2></div>'
+     + '<div class="who-tbl">'
+     + '<div class="who-row"><span class="who-k">あなた</span><span class="who-v">自分の気分ログ（この端末の中だけに保存）、お気に入り、投稿履歴、ぺりもっちからの個別の声かけ</span></div>'
+     + '<div class="who-row"><span class="who-k">マネージャー</span><span class="who-v">チーム平均の推移と、「ケアが必要かもしれない人が◯名」という匿名の件数のみ。<strong>個人名・個人のスコアは表示されません。</strong></span></div>'
+     + '<div class="who-row"><span class="who-k">人事・産業医</span><span class="who-v">あなたが同意のボタンを押した場合に限り、個別の相談としてつながります。</span></div>'
+     + '</div>'
+     + '<p class="foot">このアプリは体調や気分の記録を助けるものであり、医療的な診断・助言を行うものではありません。つらさが続くときは産業医や医療機関にご相談ください。</p>'
+     + '</div>';
+
+  document.getElementById("tab-me").innerHTML = h;
+}
+
+/* ============ render: manager ============ */
+function renderMgr(){
+  var last = TEAM[TEAM.length-1], prev = TEAM[TEAM.length-2];
+  var diff = (last.v - prev.v).toFixed(1);
+  var care = state.low ? 2 : 1;
+  var below = last.v < TEAM_THRESHOLD;
+
+  var h = '<div class="mgr-banner">'
+        + '<span class="t">マネージャーに見えている画面</span>'
+        + '<p class="d">個人名・個人ごとのスコア・誰がどの投稿をしたかは、この画面には一切表示されません。表示されるのは集計値だけです。</p>'
+        + '<button data-act="unmgr">社員の画面に戻る</button></div>';
+
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:13px">'
+     + '<div class="sec-h"><h2 class="sec-t">チームの元気度</h2><span class="sec-s">カスタマーサクセス / 9名</span></div>'
+     + teamChart()
+     + '<p class="legend-note"><span>週平均（5段階）</span><span>直近8週</span></p>'
+     + '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">今週の平均</div><div class="stat-v">'+last.v.toFixed(1)+' <small>/ 5</small></div></div>'
+     + '<div class="stat"><div class="stat-l">先週比</div><div class="stat-v">'+diff+'</div></div>'
+     + '</div>';
+  if(below){
+    h += '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>今週は注意ライン 3.4 を下回っています</div>';
+  } else {
+    h += '<div class="chip chip-good" style="align-self:flex-start"><span class="dot"></span>注意ラインの範囲内です</div>';
+  }
+  h += '</div>';
+
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
+     + '<div class="sec-h"><h2 class="sec-t">ケアの目安</h2></div>'
+     + '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>ケアが必要かもしれない人：'+care+'名</div>'
+     + '<p class="disclaim">3日以上続けて低いスコアが記録された人数です。<strong>誰であるかは表示されません。</strong>本人には、ぺりもっちから直接そっと声をかけています。</p>'
+     + '<ul class="nolist" style="margin-top:4px">'
+     + '<li><span class="mk">→</span><span>1on1の頻度を一時的に上げる（全員に対して、名指しせずに）</span></li>'
+     + '<li><span class="mk">→</span><span>今週の締め切りのうち、後ろ倒しできるものを探す</span></li>'
+     + '<li><span class="mk">→</span><span>産業医面談の案内を、チーム全体にあらためて共有する</span></li>'
+     + '</ul></div>';
+
+  h += '<div class="card card-quiet" style="display:flex;flex-direction:column;gap:11px">'
+     + '<div class="sec-h"><h2 class="sec-t">この画面に出ないもの</h2></div>'
+     + '<ul class="nolist">'
+     + '<li><span class="mk">✕</span><span>誰がどのスコアを付けたか</span></li>'
+     + '<li><span class="mk">✕</span><span>個人ごとの気分の推移グラフ</span></li>'
+     + '<li><span class="mk">✕</span><span>投稿と気分スコアの紐付け</span></li>'
+     + '<li><span class="mk">✕</span><span>チーム人数が5名未満のときの集計値（個人が特定できるため非表示）</span></li>'
+     + '</ul></div>';
+
+  document.getElementById("tab-mgr").innerHTML = h;
+}
+
+/* ============ tabbar ============ */
+function renderTabs(){
+  var tb = document.getElementById("tabbar");
+  if(state.mgr){ tb.hidden = true; return; }
+  tb.hidden = false;
+  var items = [["home","ホーム"],["feed","みんな"],["me","じぶん"]];
+  tb.innerHTML = items.map(function(it){
+    return '<button class="tab" role="tab" data-tab="'+it[0]+'" aria-selected="'+(state.view===it[0])+'">'
+      + TAB_ICONS[it[0]] + '<span>'+it[1]+'</span></button>';
+  }).join("");
+}
+
+function show(){
+  ["home","feed","me","mgr"].forEach(function(k){
+    document.getElementById("tab-"+k).hidden = (state.view!==k);
+  });
+  renderTabs();
+  document.getElementById("app").scrollTop = 0;
+}
+
+function renderAll(){
+  renderHome(); renderFeed(); renderMe(); renderMgr(); show();
+}
+
+/* ============ toast ============ */
+var toastTimer=null;
+function toast(msg){
+  var old=document.querySelector(".toast"); if(old) old.remove();
+  var el=document.createElement("div"); el.className="toast"; el.textContent=msg;
+  el.setAttribute("role","status");
+  document.getElementById("phone").appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ el.remove(); }, 2200);
+}
+
+/* ============ compose sheet ============ */
+function openCompose(){
+  closeCompose();
+  var phone=document.getElementById("phone");
+  var bg=document.createElement("div"); bg.className="sheet-bg"; bg.id="sheet-bg";
+  var sh=document.createElement("div"); sh.className="sheet"; sh.id="sheet";
+  sh.setAttribute("role","dialog"); sh.setAttribute("aria-label","今日のいいことを書く");
+  sh.innerHTML =
+      '<div class="sheet-h"><h2 class="sec-t">今日のいいこと</h2>'
+    + '<button class="btn btn-ghost" data-act="closeSheet" style="padding:7px 12px">とじる</button></div>'
+    + '<textarea id="compose-text" maxlength="140" placeholder="一言でどうぞ。「エレベーターで知らない人にドアを押さえてもらった」くらいで十分です。"></textarea>'
+    + '<div class="sheet-row">'
+    + '<button class="stamp" id="use-topic" aria-pressed="false">お題「'+esc(TOPIC)+'」で書く</button>'
+    + '<button class="stamp" id="add-photo" aria-pressed="false">写真をつける</button>'
+    + '<span class="count tnum" id="cnt">0 / 140</span></div>'
+    + '<div id="photo-slot"></div>'
+    + '<button class="btn btn-full" data-act="submit">投稿する</button>'
+    + '<p class="disclaim warnbox"><strong>顧客名・案件名・社外秘は書かないでください。</strong><br>'
+    + '投稿は社内タイムライン（全員）に表示されます。気分スコアとは紐付きません。</p>';
+  phone.appendChild(bg); phone.appendChild(sh);
+  var ta=document.getElementById("compose-text");
+  ta.addEventListener("input", function(){ document.getElementById("cnt").textContent = ta.value.length+" / 140"; });
+  ta.focus();
+}
+function closeCompose(){
+  var a=document.getElementById("sheet-bg"), b=document.getElementById("sheet");
+  if(a) a.remove(); if(b) b.remove();
+}
+
+var pendingPhoto=null;
+function submitPost(){
+  var ta=document.getElementById("compose-text");
+  var txt=(ta.value||"").trim();
+  if(!txt){ toast("一言だけでも書いてみてください"); ta.focus(); return; }
+  var photo=pendingPhoto; pendingPhoto=null;
+  closeCompose();
+  if(HAS_DB){
+    state.view="feed"; show();
+    dbAddPost(txt, photo)
+      .then(function(){ toast("投稿しました"); })
+      .catch(function(e){ console.warn("post failed", e); toast("投稿できませんでした。通信を確認してください"); });
+    return;
+  }
+  var id="own"+Date.now();
+  state.posts.unshift({id:id, name:me.name, dept:me.dept||"マーケティング", hue:"var(--accent-fill)", ago:"たった今",
+    text:txt, photo:photo, r:{}, own:true});
+  state.counts[id]=Object.assign({},ZERO_R);
+  save(); state.view="feed"; renderAll();
+  toast("投稿しました");
+}
+
+/* ============ events ============ */
+document.addEventListener("click", function(ev){
+  var t=ev.target.closest ? ev.target.closest("[data-mood],[data-fav],[data-stamp],[data-tab],[data-act],[data-dept],#gear,#btn-mgr,#btn-low,#btn-reset,#btn-seed,#btn-hist,#use-topic,#add-photo") : null;
+  if(!t) return;
+
+  if(t.id==="gear"){
+    var p=document.getElementById("ctxpanel");
+    p.hidden=!p.hidden; t.setAttribute("aria-expanded", String(!p.hidden)); return;
+  }
+  if(t.id==="btn-hist"){
+    var hd=new Date(), guard=0, keys=[];
+    while(keys.length<BASE_LOG.length && guard<90){
+      hd.setDate(hd.getDate()-1); guard++;
+      if(hd.getDay()!==0 && hd.getDay()!==6) keys.unshift(""+hd.getFullYear()+pad2(hd.getMonth()+1)+pad2(hd.getDate()));
+    }
+    keys.forEach(function(k,i){ state.moodLog[k]=BASE_LOG[i]; });
+    if(state.mood!==null) state.moodLog[todayKey()]=state.mood;
+    save(); renderAll(); toast("サンプルの履歴を入れました"); return;
+  }
+  if(t.id==="btn-seed"){
+    if(!HAS_DB){ toast("共有DBに接続していません"); return; }
+    t.disabled=true;
+    seedSamples().then(function(){ toast("サンプル投稿を入れました"); })
+      .catch(function(e){ console.warn(e); toast("入れられませんでした"); })
+      .then(function(){ t.disabled=false; });
+    return;
+  }
+  if(t.id==="btn-mgr"){
+    state.mgr=!state.mgr; state.view = state.mgr ? "mgr" : "home";
+    t.setAttribute("aria-pressed", String(state.mgr)); renderAll(); return;
+  }
+  if(t.id==="btn-low"){
+    state.low=!state.low; state.quiet=false; t.setAttribute("aria-pressed", String(state.low));
+    if(state.low) state.mood=null;
+    renderAll();
+    toast(state.low ? "低スコアが続いた状態にしました" : "通常の状態に戻しました"); return;
+  }
+  if(t.id==="btn-reset"){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    state.mood=null; state.moodLog={}; state.favs={}; state.mine={}; state.low=false; state.quiet=false; state.mgr=false; state.view="home";
+    state.posts=SEED_POSTS.slice(); state.counts={};
+    SEED_POSTS.forEach(function(p){ state.counts[p.id]=Object.assign({},p.r); });
+    document.getElementById("btn-low").setAttribute("aria-pressed","false");
+    document.getElementById("btn-mgr").setAttribute("aria-pressed","false");
+    renderAll(); toast("最初の状態に戻しました"); return;
+  }
+  if(t.id==="use-topic"){
+    var on=t.getAttribute("aria-pressed")==="true";
+    var ta=document.getElementById("compose-text");
+    if(!on && ta.value.indexOf(TOPIC)===-1){ ta.value = TOPIC+"：" + ta.value; }
+    t.setAttribute("aria-pressed", String(!on));
+    document.getElementById("cnt").textContent = ta.value.length+" / 140"; ta.focus(); return;
+  }
+  if(t.id==="add-photo"){
+    var onp=t.getAttribute("aria-pressed")==="true";
+    var slot=document.getElementById("photo-slot");
+    if(onp){ slot.innerHTML=""; pendingPhoto=null; t.setAttribute("aria-pressed","false"); }
+    else{
+      pendingPhoto="linear-gradient(135deg,#D9E3D6,#9CB49A)";
+      slot.innerHTML='<div class="photo" style="background:'+pendingPhoto+'"><span>写真</span></div>';
+      t.setAttribute("aria-pressed","true");
+    }
+    return;
+  }
+
+  var mood=t.getAttribute("data-mood");
+  if(mood){
+    state.mood=parseInt(mood,10);
+    state.moodLog[todayKey()]=state.mood;
+    save(); renderAll();
+    toast("記録しました。"+moodLabel(state.mood)+"な一日になりますように。"); return;
+  }
+
+  var fav=t.getAttribute("data-fav");
+  if(fav){
+    state.favs[fav]=!state.favs[fav]; save();
+    var sc=document.getElementById("app").scrollTop;
+    renderHome(); renderMe(); document.getElementById("app").scrollTop=sc; return;
+  }
+
+  var st=t.getAttribute("data-stamp");
+  if(st){
+    var parts=st.split("|"), pid=parts[0], sym=parts[1];
+    state.mine[pid]=state.mine[pid]||{};
+    var was=!!state.mine[pid][sym];
+    state.mine[pid][sym]=!was;
+    state.counts[pid]=state.counts[pid]||{};
+    state.counts[pid][sym]=Math.max(0,(state.counts[pid][sym]||0)+(was?-1:1));
+    t.setAttribute("aria-pressed", String(!was));
+    t.querySelector(".n").textContent = state.counts[pid][sym];
+    if(!was){ t.classList.remove("pop"); void t.offsetWidth; t.classList.add("pop"); }
+    save();
+    if(HAS_DB) dbReact(pid, sym, was?-1:1).catch(function(e){ console.warn("react failed", e); });
+    return;
+  }
+
+  var dept=t.getAttribute("data-dept");
+  if(dept){
+    var ni=document.getElementById("reg-name");
+    var nm=ni ? (ni.value||"").trim() : "";
+    if(ni && !nm){ toast("なまえを入れてください"); ni.focus(); return; }
+    if(nm) me.name=nm.slice(0,20);
+    me.dept=dept;
+    try{ localStorage.setItem(KEY+".dept", dept); localStorage.setItem(KEY+".name", me.name); }catch(e){}
+    renderAll(); markMode();
+    toast("ようこそ、"+me.name+"さん"); return;
+  }
+
+  var tab=t.getAttribute("data-tab");
+  if(tab){ state.view=tab; show(); return; }
+
+  var act=t.getAttribute("data-act");
+  if(act==="compose"){ openCompose(); return; }
+  if(act==="closeSheet"){ closeCompose(); return; }
+  if(act==="submit"){ submitPost(); return; }
+  if(act==="unmgr"){
+    state.mgr=false; state.view="home";
+    document.getElementById("btn-mgr").setAttribute("aria-pressed","false"); renderAll(); return;
+  }
+  if(act==="rename"){
+    var mi=document.getElementById("me-name");
+    var v=(mi.value||"").trim();
+    if(!v){ toast("なまえを入れてください"); mi.focus(); return; }
+    me.name=v.slice(0,20);
+    try{ localStorage.setItem(KEY+".name", me.name); }catch(e){}
+    markMode(); toast("なまえを変えました"); return;
+  }
+  if(act==="consult"){ toast("あなたが同意した場合にだけ、産業医につながります"); return; }
+  if(act==="later"){ state.quiet=true; renderHome(); toast("わかった。またいつでも。"); return; }
+});
+
+document.addEventListener("click", function(ev){
+  if(ev.target && ev.target.id==="sheet-bg") closeCompose();
+});
+document.addEventListener("keydown", function(ev){
+  if(ev.key==="Escape") closeCompose();
+});
+
+/* ============ boot ============ */
+function markMode(){
+  var el=document.getElementById("mode");
+  if(el){
+    el.innerHTML = esc(HAS_LIFF ? "LINEログイン済み（"+me.name+"）" : "LINE未接続（デモ表示）")
+                 + "<br>" + esc(HAS_DB ? "投稿のみFirestoreで共有中" : "投稿もこの端末内にのみ保存")
+                 + "<br>" + esc("気分ログは常に端末内のみ");
+  }
+  var sw=document.getElementById("seedwrap"); if(sw) sw.hidden = !HAS_DB;
+}
+
+function boot(){
+  load();
+  try{ var d=localStorage.getItem(KEY+".dept"); if(d) me.dept=d; }catch(e){}
+
+  var chain = Promise.resolve();
+  if(CFG.liffId && typeof liff !== "undefined"){
+    chain = liff.init({liffId:CFG.liffId}).then(function(){
+      if(!liff.isLoggedIn()){ liff.login(); return new Promise(function(){}); }
+      return liff.getProfile().then(function(pr){
+        var saved=null; try{ saved=localStorage.getItem(KEY+".name"); }catch(e){}
+        me.userId = pr.userId;
+        me.name   = saved || pr.displayName || "名無し";
+        HAS_LIFF  = true;
+      });
+    }).catch(function(e){ console.warn("LIFF init failed — デモ表示で続行します", e); });
+  }
+
+  chain.then(function(){
+    if(CFG.firebase && CFG.firebase.projectId && typeof firebase !== "undefined"){
+      try{
+        firebase.initializeApp(CFG.firebase);
+        db = firebase.firestore();
+        HAS_DB = true;
+      }catch(e){ console.warn("Firebase init failed — 端末内保存で続行します", e); }
+    }
+    if(HAS_DB) subscribePosts();
+    if(HAS_LIFF && !me.dept){ markMode(); renderRegister(); return; }
+    renderAll(); markMode();
+  });
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
