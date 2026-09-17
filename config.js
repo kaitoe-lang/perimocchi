@@ -18,11 +18,13 @@ window.PERI_CONFIG = {
   //    ※ ここに書く値は公開されて問題ないものです（ブラウザに配られる前提の値）。
   //       アクセス制御は Firestore のセキュリティルール側で行います。
   firebase: {
-    // apiKey: "...",
-    // authDomain: "xxx.firebaseapp.com",
-    // projectId: "",
-    // storageBucket: "xxx.appspot.com",
-    // messagingSenderId: "...",
-    // appId: "..."
+    const firebaseConfig = {
+  apiKey: "AIzaSyCcwWs_MZ_cQ25w-SeWLXJ4tn23p-XmI94",
+  authDomain: "pelimotchi.firebaseapp.com",
+  projectId: "pelimotchi",
+  storageBucket: "pelimotchi.firebasestorage.app",
+  messagingSenderId: "484041930317",
+  appId: "1:484041930317:web:e70348e64e3fac2035ce04"
+};
   }
 };
