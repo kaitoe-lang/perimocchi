@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="config.js"></script>
+<script src="i18n.js"></script>
 <style>
 :root{
   color-scheme: light dark;
@@ -338,51 +339,76 @@ textarea::placeholder{color:var(--ink-3)}
 (function(){
 "use strict";
 
+/* ============ 言語 ============ */
+var LANGS = ["ja","zh","en","th"];
+var LANG_NAMES = { ja:"日本語", zh:"繁體中文", en:"English", th:"ไทย" };
+var I18N = window.PERI_I18N || {};
+var lang = "ja";
+
+function L(){ return I18N[lang] || I18N.ja || {}; }
+function dig(o, parts){ for(var i=0;i<parts.length && o!=null;i++) o=o[parts[i]]; return o; }
+function T(path, vars){
+  var parts = path.split(".");
+  var v = dig(I18N[lang], parts);
+  if(v==null) v = dig(I18N.ja, parts);          // 未翻訳は日本語にフォールバック
+  if(typeof v !== "string") return v;
+  if(vars) Object.keys(vars).forEach(function(k){ v = v.split("{"+k+"}").join(vars[k]); });
+  return v;
+}
+function detectLang(){
+  var saved=null; try{ saved=localStorage.getItem("poka.v1.lang"); }catch(e){}
+  if(saved && I18N[saved]) return saved;
+  var raw="";
+  try{ if(typeof liff!=="undefined" && liff.getLanguage) raw = liff.getLanguage()||""; }catch(e){}
+  if(!raw) raw = navigator.language || navigator.userLanguage || "";
+  raw = String(raw).toLowerCase();
+  if(raw.indexOf("ja")===0) return "ja";
+  if(raw.indexOf("th")===0) return "th";
+  if(raw.indexOf("zh")===0) return "zh";
+  if(raw.indexOf("en")===0) return "en";
+  return "ja";
+}
+
 /* ============ data ============ */
-var MOODS = [
-  {v:5, label:"げんき"},
-  {v:4, label:"いいかんじ"},
-  {v:3, label:"ふつう"},
-  {v:2, label:"しんどい"},
-  {v:1, label:"つらい"}
-];
+var MOOD_VALUES = [5,4,3,2,1];
+function moodLabel(v){ return T("mood."+v); }
 var moodColor = function(v){ return "var(--m" + v + ")"; };
-var moodLabel = function(v){ for(var i=0;i<MOODS.length;i++) if(MOODS[i].v===v) return MOODS[i].label; return ""; };
 
-var NEWS = [
-  {id:"n1", g:"動物", tone:"bright", t:"駅で迷子になった柴犬、駅員が3時間見守り 飼い主と再会",
-   s:"改札の内側でじっと座り込んでいた柴犬を、駅員が交代で見守り。夕方に息を切らして駆けつけた飼い主のもとへ戻りました。"},
-  {id:"n2", g:"地域", tone:"bright", t:"閉店予定だった銭湯、常連客のクラウドファンディングで存続が決定",
-   s:"築58年、番台のタイルもそのまま。目標額は公開から11日で到達し、支援者の8割が半径2km以内の住民でした。"},
-  {id:"n3", g:"くらし", tone:"bright", t:"小学生が育てたひまわり、種になって500km先の学校へ",
-   s:"6年生が花壇で採った種を封筒に小分けし、交流のある学校へ郵送。来年は向こうの校庭で咲く予定です。"},
-  {id:"n4", g:"感動", tone:"warm", t:"台南の食堂、22年続く「お腹がすいた人はお代いりません」の貼り紙",
-   s:"店主いわく「うちも昔、同じことをしてもらった」。張り紙は色あせるたびに、新しい紙に書き直されています。"},
-  {id:"n5", g:"動物", tone:"calm", t:"引退した競走馬、保護牧場でセラピー馬に 週末は子どもたちと過ごす",
-   s:"走ることをやめた後の10年をどう過ごすか。ブラシをかけられている間、ずっと目を細めているそうです。"},
-  {id:"n6", g:"くらし", tone:"calm", t:"夜勤明けのパン屋が焼く「6時のパン」、無言で並ぶ常連たち",
-   s:"開店前の6時、看板もないのに5人ほどが待っています。誰も話しかけず、焼き上がりの匂いだけが合図です。"}
+/* 記事は「並び順・ID・トーン」だけをここに持ち、文面は i18n.js から引く */
+var NEWS_META = [
+  {id:"n1", tone:"bright"}, {id:"n2", tone:"bright"}, {id:"n3", tone:"bright"},
+  {id:"n4", tone:"warm"},   {id:"n5", tone:"calm"},   {id:"n6", tone:"calm"}
 ];
+function newsList(){
+  var loc = L().news || [];
+  return NEWS_META.map(function(m,i){
+    var d = loc[i] || {};
+    return { id:m.id, tone:m.tone, gkey:d.g||"life", g:T("genres."+(d.g||"life")), t:d.t||"", s:d.s||"" };
+  });
+}
 
-var SEED_POSTS = [
-  {id:"p1", name:"佐藤 みなみ", dept:"カスタマーサクセス", hue:"var(--m2)", ago:"2時間前",
-   text:"近所の猫が、半年かけてやっと撫でさせてくれました。今日はもう勝った気分でいます。",
-   photo:"linear-gradient(135deg,#C9D8E4,#8FA6B8)",
-   r:{clap:6,heart:12,smile:4,party:1}},
-  {id:"p2", name:"Wei-Chen", dept:"プロダクト（台北）", hue:"var(--m5)", ago:"4時間前",
-   text:"日本チームにパイナップルケーキを送りました。会議前の3分、全員が無言で食べていたのが面白かったです。",
+/* サンプル投稿も同様。氏名は翻訳しない（多国籍な社内をそのまま表す） */
+var SEED_META = [
+  {id:"p1", name:"佐藤 みなみ", hue:"var(--m2)", agoMs:2*3600000,
+   photo:"linear-gradient(135deg,#C9D8E4,#8FA6B8)", r:{clap:6,heart:12,smile:4,party:1}},
+  {id:"p2", name:"Wei-Chen", hue:"var(--m5)", agoMs:4*3600000,
    photo:null, r:{clap:3,heart:9,smile:11,party:2}},
-  {id:"p3", name:"田中 航", dept:"セールス", hue:"var(--m1)", ago:"昨日",
-   text:"半年追いかけていた案件で、担当の方から「あなたでよかった」と言われました。受注はまだですが、今日はそれで十分です。",
+  {id:"p3", name:"田中 航", hue:"var(--m1)", agoMs:26*3600000,
    photo:null, r:{clap:18,heart:14,smile:5,party:7}},
-  {id:"p4", name:"Emily", dept:"マーケティング", hue:"var(--m4)", ago:"昨日",
-   text:"今日のランチ自慢：会社の下の定食屋、日替わりが唐揚げの日だけ10分早く出るのがコツです。",
-   photo:"linear-gradient(135deg,#EBD3AE,#C99E6A)",
-   r:{clap:2,heart:6,smile:9,party:0}}
+  {id:"p4", name:"Emily", hue:"var(--m4)", agoMs:30*3600000,
+   photo:"linear-gradient(135deg,#EBD3AE,#C99E6A)", r:{clap:2,heart:6,smile:9,party:0}}
 ];
+function seedPosts(){
+  var loc = L().posts || [];
+  return SEED_META.map(function(m,i){
+    var d = loc[i] || {};
+    return { id:m.id, name:m.name, dept:d.dept||"", hue:m.hue, ago:agoText(Date.now()-m.agoMs),
+             text:d.text||"", photo:m.photo, r:m.r };
+  });
+}
+
 var STAMPS = [{k:"clap",e:"👏"},{k:"heart",e:"💚"},{k:"smile",e:"😊"},{k:"party",e:"🎉"}];
 var ZERO_R = {clap:0,heart:0,smile:0,party:0};
-var TOPIC = "今日のランチ自慢";
 
 var TEAM = [
   {w:"7/28",v:3.8},{w:"8/4",v:3.9},{w:"8/11",v:3.6},{w:"8/18",v:3.7},
@@ -405,13 +431,17 @@ function weekdayLabels(n){
 }
 
 var state = {
-  view:"home", mood:null, moodLog:{}, favs:{}, posts:SEED_POSTS.slice(), mine:{},
+  view:"home", mood:null, moodLog:{}, favs:{}, posts:[], mine:{},
   low:false, quiet:false, mgr:false, counts:{}
 };
-SEED_POSTS.forEach(function(p){ state.counts[p.id]=Object.assign({},p.r); });
 
 var KEY="poka.v1";
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify({moodLog:state.moodLog,favs:state.favs,mine:state.mine,counts:state.counts,extra:state.posts.filter(function(p){return p.own;})})); }catch(e){} }
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify({
+    moodLog:state.moodLog, favs:state.favs, mine:state.mine, counts:state.counts,
+    extra:state.posts.filter(function(p){return p.own;})
+  })); }catch(e){}
+}
 function load(){
   try{
     var raw=localStorage.getItem(KEY); if(!raw) return;
@@ -427,15 +457,26 @@ function load(){
     if(Array.isArray(o.extra)) o.extra.forEach(function(p){ state.posts.unshift(p); });
   }catch(e){}
 }
+
+/* 言語が変わるとサンプル投稿の文面も変わるので作り直す（DB接続時は触らない） */
+function resetSeedPosts(){
+  if(HAS_DB) return;
+  var own = state.posts.filter(function(p){ return p.own; });
+  var seeds = seedPosts();
+  state.posts = own.concat(seeds);
+  seeds.forEach(function(p){ if(!state.counts[p.id]) state.counts[p.id]=Object.assign({},p.r); });
+}
+
 /* ============ identity & backend ============ */
 var CFG = window.PERI_CONFIG || {};
 var HAS_LIFF=false, HAS_DB=false, db=null, unsubPosts=null;
-var me = { userId:"local", name:"あなた", dept:"" };
-var DEPTS = ["マーケティング","セールス","カスタマーサクセス","プロダクト","コーポレート","その他"];
+var me = { userId:"local", name:"", deptIdx:null };
+function myDept(){ return (me.deptIdx==null) ? "" : (L().depts||[])[me.deptIdx] || ""; }
 var HUES = ["var(--m1)","var(--m2)","var(--m4)","var(--m5)","var(--accent-fill)"];
 
 function hueFor(id){ var n=0,i; id=String(id||""); for(i=0;i<id.length;i++) n=(n*31+id.charCodeAt(i))>>>0; return HUES[n%HUES.length]; }
 function pad2(n){ return (n<10?"0":"")+n; }
+function todayKey(){ var d=new Date(); return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
 /* リッチメニューなどから ?tab=feed の形で開いたときに、そのタブを開く。
    LIFF はクエリを liff.state 経由で引き渡すので、必ず liff.init() の完了後に読むこと。 */
 function wantedTab(){
@@ -444,27 +485,16 @@ function wantedTab(){
     return (t==="home"||t==="feed"||t==="me") ? t : null;
   }catch(e){ return null; }
 }
-function todayKey(){ var d=new Date(); return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
 function agoText(ms){
-  if(!ms) return "たった今";
-  var s=(Date.now()-ms)/1000;
-  if(s<60) return "たった今";
-  if(s<3600) return Math.floor(s/60)+"分前";
-  if(s<86400) return Math.floor(s/3600)+"時間前";
-  if(s<172800) return "昨日";
-  return Math.floor(s/86400)+"日前";
+  if(!ms) return T("ago.now");
+  var s=ms/1000;
+  if(s<60) return T("ago.now");
+  if(s<3600) return T("ago.min",{n:Math.floor(s/60)});
+  if(s<86400) return T("ago.hour",{n:Math.floor(s/3600)});
+  if(s<172800) return T("ago.yesterday");
+  return T("ago.day",{n:Math.floor(s/86400)});
 }
 
-function dbAddPost(text, photo){
-  return db.collection("posts").add({
-    userId:me.userId, name:me.name, dept:me.dept, text:text,
-    photo:photo||null, r:Object.assign({},ZERO_R), createdAt:Date.now()
-  });
-}
-function dbReact(postId, key, delta){
-  var u={}; u["r."+key]=firebase.firestore.FieldValue.increment(delta);
-  return db.collection("posts").doc(postId).update(u);
-}
 /* 気分ログは意図的に Firestore へ送っていません。
    共有DBに置くと、氏名つきの投稿と userId で結合できてしまい、
    画面上の「本人にしか見えません」という約束が成立しなくなるためです。
@@ -475,14 +505,26 @@ function moodSeries(){
              label: parseInt(k.slice(4,6),10)+"/"+parseInt(k.slice(6,8),10) };
   });
 }
+
+function dbAddPost(text, photo){
+  return db.collection("posts").add({
+    userId:me.userId, name:me.name, dept:myDept(), text:text,
+    photo:photo||null, r:Object.assign({},ZERO_R), createdAt:Date.now()
+  });
+}
+function dbReact(postId, key, delta){
+  var u={}; u["r."+key]=firebase.firestore.FieldValue.increment(delta);
+  return db.collection("posts").doc(postId).update(u);
+}
 function subscribePosts(){
   if(unsubPosts) unsubPosts();
   unsubPosts = db.collection("posts").orderBy("createdAt","desc").limit(50).onSnapshot(function(sn){
     var arr=[];
     sn.forEach(function(d){
       var v=d.data()||{};
-      arr.push({ id:d.id, name:v.name||"名無し", dept:v.dept||"", hue:hueFor(v.userId||d.id),
-                 ago:agoText(v.createdAt), text:v.text||"", photo:v.photo||null, own:v.userId===me.userId });
+      arr.push({ id:d.id, name:v.name||T("anon"), dept:v.dept||"", hue:hueFor(v.userId||d.id),
+                 ago:agoText(Date.now()-(v.createdAt||Date.now())), text:v.text||"",
+                 photo:v.photo||null, own:v.userId===me.userId });
       state.counts[d.id]=Object.assign({},ZERO_R,v.r||{});
     });
     state.posts=arr; renderFeed();
@@ -490,7 +532,7 @@ function subscribePosts(){
 }
 function seedSamples(){
   var b=db.batch();
-  SEED_POSTS.forEach(function(p,i){
+  seedPosts().forEach(function(p,i){
     b.set(db.collection("posts").doc(), {
       userId:"sample"+i, name:p.name, dept:p.dept, text:p.text,
       photo:p.photo, r:Object.assign({},p.r), createdAt: Date.now()-(i+1)*3600000
@@ -511,50 +553,33 @@ function faceSVG(v, cls){
     + '<path d="'+mouth+'" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>'
     + '</svg>';
 }
-
-var PERI_ALT = {
-  front:"正面を向いて立っているぺりもっち", side:"くちばしのふくろを見せているぺりもっち",
-  shout:"大きな口を開けてよろこんでいるぺりもっち", fish:"ふくろに魚を入れているぺりもっち",
-  blank:"ぼんやりしているぺりもっち", back:"背中を向けているぺりもっち",
-  walk:"ぺたぺた歩いているぺりもっち", tired:"うつぶせで休んでいるぺりもっち"
-};
 function mascot(pose){
-  return '<img class="peri" src="art/peri-'+pose+'.png" alt="'+PERI_ALT[pose]+'">';
+  return '<img class="peri" src="art/peri-'+pose+'.png" alt="'+esc(T("alt."+pose))+'">';
 }
-
 var heartSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.4 3.9 12.3a5 5 0 0 1 7.1-7.1l1 1 1-1a5 5 0 1 1 7.1 7.1Z" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
-
 var TAB_ICONS = {
   home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1Z"/></svg>',
   feed:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.1A8 8 0 1 1 21 12Z"/></svg>',
   me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>'
 };
-
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
 /* ============ mascot copy ============ */
 function mascotLine(){
-  if(state.low && state.quiet) return {pose:"tired", say:"わかった。ぼくもここで休んでるね。おなかすいたら言って。"};
-  if(state.low) return {pose:"fish", say:"ここ数日、しんどい日が続いてるみたいだね。無理に元気を出さなくて大丈夫。とりあえず魚、持ってきたよ。"};
-  if(state.mood===null) return {pose:"front", say:"おはよう。今日の気分、どんな感じ？"};
+  if(state.low && state.quiet) return {pose:"tired", say:T("say.quiet")};
+  if(state.low) return {pose:"fish", say:T("say.low")};
+  if(state.mood===null) return {pose:"front", say:T("say.greet")};
   var poses = {5:"shout", 4:"side", 3:"blank", 2:"fish", 1:"tired"};
-  var says = {
-    5:"いいね、その調子。明るい話をふくろいっぱいに入れてきたよ。",
-    4:"よかった。読みやすいものを3つ、ふくろから出すね。",
-    3:"ふつうの日も、ちゃんといい日。軽めのものを選んでおいたよ。",
-    2:"しんどいね。とりあえず魚、持ってきたよ。今日はゆっくりめの話にしたから。",
-    1:"話してくれてありがとう。今日はぼくも一緒にのびてる。何もしなくていい日にしよう。"
-  };
-  return {pose:poses[state.mood], say:says[state.mood]};
+  return {pose:poses[state.mood], say:T("say.m"+state.mood)};
 }
 function newsNote(){
-  if(state.mood>=4) return "元気な日なので、明るい話題を多めにしています";
-  if(state.mood===3) return "軽めの話題を中心に選んでいます";
-  return "今日はゆっくり読める、静かな話題を多めにしています";
+  if(state.mood>=4) return T("home.noteHigh");
+  if(state.mood===3) return T("home.noteMid");
+  return T("home.noteLow");
 }
 function pickNews(){
   var order = state.mood>=4 ? ["bright","warm","calm"] : (state.mood===3 ? ["warm","bright","calm"] : ["calm","warm","bright"]);
-  return NEWS.slice().sort(function(a,b){ return order.indexOf(a.tone)-order.indexOf(b.tone); }).slice(0,3);
+  return newsList().sort(function(a,b){ return order.indexOf(a.tone)-order.indexOf(b.tone); }).slice(0,3);
 }
 
 /* ============ render: home ============ */
@@ -566,43 +591,42 @@ function renderHome(){
 
   if(state.low){
     h += '<div style="display:flex;flex-direction:column;gap:9px;margin-top:14px">'
-       + '<button class="btn btn-full" data-act="consult">産業医・人事に相談する</button>'
-       + (state.quiet ? '' : '<button class="btn btn-ghost btn-full" data-act="later">今はそっとしておいて</button>')
-       + '<p class="disclaim">このアプリは医療的な診断や助言を行うものではありません。相談内容は、あなたが同意した場合にのみ担当者に共有されます。</p>'
+       + '<button class="btn btn-full" data-act="consult">'+esc(T("home.consult"))+'</button>'
+       + (state.quiet ? '' : '<button class="btn btn-ghost btn-full" data-act="later">'+esc(T("home.later"))+'</button>')
+       + '<p class="disclaim">'+esc(T("home.medical"))+'</p>'
        + '</div>';
   } else {
     h += '<div style="margin-top:15px;display:flex;flex-direction:column;gap:10px">'
-       + '<div class="moods" role="group" aria-label="今日の気分">';
-    MOODS.forEach(function(mo){
-      h += '<button class="mood" data-mood="'+mo.v+'" aria-pressed="'+(state.mood===mo.v)+'" style="color:'+moodColor(mo.v)+'">'
-         + faceSVG(mo.v) + '<span class="lbl">'+esc(mo.label)+'</span></button>';
+       + '<div class="moods" role="group" aria-label="'+esc(T("home.forYou"))+'">';
+    MOOD_VALUES.forEach(function(v){
+      h += '<button class="mood" data-mood="'+v+'" aria-pressed="'+(state.mood===v)+'" style="color:'+moodColor(v)+'">'
+         + faceSVG(v) + '<span class="lbl">'+esc(moodLabel(v))+'</span></button>';
     });
-    h += '</div><p class="hint">'+(state.mood===null?"ワンタップだけ。あとから変えられます。":"タップし直せば、今日の記録を変えられます。")+'</p></div>';
+    h += '</div><p class="hint">'+esc(state.mood===null?T("home.hint1"):T("home.hint2"))+'</p></div>';
   }
   h += '</div>';
 
   if(state.mood!==null || state.low){
-    var list = pickNews();
     h += '<div style="display:flex;flex-direction:column;gap:11px">'
-       + '<div class="sec-h"><h2 class="sec-t">今日のあなたに</h2><span class="sec-s">'+esc(newsNote())+'</span></div>'
+       + '<div class="sec-h"><h2 class="sec-t">'+esc(T("home.forYou"))+'</h2><span class="sec-s">'+esc(newsNote())+'</span></div>'
        + '<div class="news">';
-    list.forEach(function(n){
+    pickNews().forEach(function(n){
       var on = !!state.favs[n.id];
       h += '<article class="item"><div class="item-b">'
          + '<span class="tag">'+esc(n.g)+'</span>'
          + '<h3 class="item-t">'+esc(n.t)+'</h3>'
          + '<p class="item-s">'+esc(n.s)+'</p></div>'
-         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="'+on+'" aria-label="'+(on?"お気に入りから外す":"お気に入りに入れる")+'">'+heartSVG+'</button>'
+         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="'+on+'" aria-label="'+esc(T("me.favTitle"))+'">'+heartSVG+'</button>'
          + '</article>';
     });
-    h += '</div><p class="disclaim">※ 記事はすべて架空のサンプルです。本番ではニュースAPIから収集し、AIがほっこり度の判定・要約・不適切な記事の除外を行う想定です。</p></div>';
+    h += '</div><p class="disclaim">'+esc(T("home.newsDisclaimer"))+'</p></div>';
 
     h += '<div class="cta">'
-       + '<span class="eyebrow">よみおわったら</span>'
-       + '<div class="cta-peri">' + '<img src="art/peri-walk.png" alt="'+PERI_ALT.walk+'">'
-       + '<p class="cta-t">あなたの「いいこと」も、ぺりもっちのふくろに入れてみませんか？</p></div>'
-       + '<span class="theme">今日のお題：'+esc(TOPIC)+'</span>'
-       + '<button class="btn btn-full" data-act="compose">今日のいいことを書く</button>'
+       + '<span class="eyebrow">'+esc(T("home.ctaEyebrow"))+'</span>'
+       + '<div class="cta-peri">' + '<img src="art/peri-walk.png" alt="'+esc(T("alt.walk"))+'">'
+       + '<p class="cta-t">'+esc(T("home.ctaTitle"))+'</p></div>'
+       + '<span class="theme">'+esc(T("home.ctaTopic"))+esc(T("topic"))+'</span>'
+       + '<button class="btn btn-full" data-act="compose">'+esc(T("home.ctaButton"))+'</button>'
        + '</div>';
   }
   document.getElementById("tab-home").innerHTML = h;
@@ -611,15 +635,15 @@ function renderHome(){
 /* ============ render: first launch ============ */
 function renderRegister(){
   var h = '<div class="card"><div class="poka-wrap">'+mascot("front")
-    + '<div class="bubble"><p class="said">はじめまして。ぼくはぺりもっち。よかったら、どのチームか教えて。</p></div></div>'
+    + '<div class="bubble"><p class="said">'+esc(T("say.hello"))+'</p></div></div>'
     + '<div style="margin-top:16px;display:flex;flex-direction:column;gap:14px">'
-    + '<div><div class="ctl-label" style="margin-bottom:7px">タイムラインに出るなまえ</div>'
-    + '<input type="text" id="reg-name" maxlength="20" value="'+esc(me.name)+'" placeholder="ぺりもっち好き">'
-    + '<p class="disclaim" style="margin-top:6px">初期値はLINEの表示名です。<strong>本名でなくて構いません。</strong>ニックネームをおすすめします。あとから変えられます。</p></div>'
-    + '<div><div class="ctl-label" style="margin-bottom:7px">チーム（選ぶとはじまります）</div><div class="ctl">'
-    + DEPTS.map(function(d){ return '<button class="stamp" data-dept="'+esc(d)+'">'+esc(d)+'</button>'; }).join("")
+    + '<div><div class="ctl-label" style="margin-bottom:7px">'+esc(T("register.nameLabel"))+'</div>'
+    + '<input type="text" id="reg-name" maxlength="20" value="'+esc(me.name)+'" placeholder="'+esc(T("register.namePlaceholder"))+'">'
+    + '<p class="disclaim" style="margin-top:6px">'+T("register.nameNote")+'</p></div>'
+    + '<div><div class="ctl-label" style="margin-bottom:7px">'+esc(T("register.teamLabel"))+'</div><div class="ctl">'
+    + (L().depts||[]).map(function(d,i){ return '<button class="stamp" data-dept="'+i+'">'+esc(d)+'</button>'; }).join("")
     + '</div></div>'
-    + '<p class="disclaim">なまえとチームは、タイムラインの表示にだけ使います。気分の記録には紐付きません。</p>'
+    + '<p class="disclaim">'+esc(T("register.note"))+'</p>'
     + '</div></div>';
   document.getElementById("tab-home").innerHTML = h;
   ["feed","me","mgr"].forEach(function(k){ document.getElementById("tab-"+k).hidden=true; });
@@ -630,30 +654,30 @@ function renderRegister(){
 /* ============ render: feed ============ */
 function renderFeed(){
   var h = '<div class="card card-quiet" style="display:flex;flex-direction:column;gap:9px">'
-        + '<span class="eyebrow">きょうのお題</span>'
-        + '<div class="cta-peri"><img src="art/peri-front.png" alt="'+PERI_ALT.front+'">'
-        + '<p class="cta-t">'+esc(TOPIC)+'</p></div>'
-        + '<button class="btn btn-full" data-act="compose">書いてみる</button></div>';
+        + '<span class="eyebrow">'+esc(T("feed.topicEyebrow"))+'</span>'
+        + '<div class="cta-peri"><img src="art/peri-front.png" alt="'+esc(T("alt.front"))+'">'
+        + '<p class="cta-t">'+esc(T("topic"))+'</p></div>'
+        + '<button class="btn btn-full" data-act="compose">'+esc(T("feed.write"))+'</button></div>';
 
-  h += '<div class="sec-h"><h2 class="sec-t">みんなのいいこと</h2><span class="sec-s">社内タイムライン</span></div>';
+  h += '<div class="sec-h"><h2 class="sec-t">'+esc(T("feed.title"))+'</h2><span class="sec-s">'+esc(T("feed.sub"))+'</span></div>';
   h += '<div style="display:flex;flex-direction:column;gap:11px">';
   state.posts.forEach(function(p){
     var c = state.counts[p.id] || {};
     h += '<article class="post">'
-       + '<div class="post-h"><div class="av" style="background:'+p.hue+'">'+esc(p.name.trim().charAt(0))+'</div>'
+       + '<div class="post-h"><div class="av" style="background:'+p.hue+'">'+esc(String(p.name||"?").trim().charAt(0))+'</div>'
        + '<div class="post-meta"><div class="post-name">'+esc(p.name)+'</div>'
        + '<div class="post-sub">'+esc(p.dept)+' · '+esc(p.ago)+'</div></div></div>'
        + '<p class="post-text">'+esc(p.text)+'</p>';
-    if(p.photo) h += '<div class="photo" style="background:'+p.photo+'"><span>写真</span></div>';
+    if(p.photo) h += '<div class="photo" style="background:'+p.photo+'"><span>'+esc(T("compose.photo"))+'</span></div>';
     h += '<div class="stamps">';
     STAMPS.forEach(function(s){
       var n = c[s.k]||0, mine = !!(state.mine[p.id]&&state.mine[p.id][s.k]);
-      h += '<button class="stamp" data-stamp="'+p.id+'|'+s.k+'" aria-pressed="'+mine+'" aria-label="'+s.e+' のリアクション '+n+'件">'
+      h += '<button class="stamp" data-stamp="'+p.id+'|'+s.k+'" aria-pressed="'+mine+'" aria-label="'+s.e+' '+n+'">'
          + '<span aria-hidden="true">'+s.e+'</span><span class="n">'+n+'</span></button>';
     });
     h += '</div></article>';
   });
-  h += '</div><p class="disclaim">'+(HAS_DB ? '※ 投稿は社内で共有されています。' : '※ 表示されている氏名・部署・投稿はすべて架空のダミーデータです。')+'</p>';
+  h += '</div><p class="disclaim">'+esc(HAS_DB ? T("feed.shared") : T("feed.dummy"))+'</p>';
   document.getElementById("tab-feed").innerHTML = h;
 }
 
@@ -663,22 +687,22 @@ function moodChart(){
   if(series.length){
     vals   = series.map(function(m){ return m.value; });
     labels = series.map(function(m){ return m.label; });
-    if(series[series.length-1].date===todayKey()) labels[labels.length-1]="今日";
+    if(series[series.length-1].date===todayKey()) labels[labels.length-1]=T("chart.today");
   } else {
     vals = (state.low ? LOW_LOG : BASE_LOG).slice();
     labels = weekdayLabels(vals.length);
-    if(state.mood!==null){ vals.push(state.mood); labels.push("今日"); }
+    if(state.mood!==null){ vals.push(state.mood); labels.push(T("chart.today")); }
   }
 
-  var W=320,H=158,L=24,R=12,T=10,B=26;
-  var n=vals.length, iw=W-L-R, ih=H-T-B;
-  var x=function(i){ return L + (n===1?iw/2:i*iw/(n-1)); };
-  var y=function(v){ return T + (5-v)/4*ih; };
+  var W=320,H=158,L2=24,R=12,Tp=10,B=26;
+  var n=vals.length, iw=W-L2-R, ih=H-Tp-B;
+  var x=function(i){ return L2 + (n===1?iw/2:i*iw/(n-1)); };
+  var y=function(v){ return Tp + (5-v)/4*ih; };
 
-  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="自分の気分の推移。縦軸は1（つらい）から5（げんき）。">';
+  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(T("chart.ariaPersonal"))+'">';
   [1,2,3,4,5].forEach(function(v){
-    s+='<line x1="'+L+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
-    s+='<text x="'+(L-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
+    s+='<line x1="'+L2+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
+    s+='<text x="'+(L2-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
   });
   var pts = vals.map(function(v,i){ return x(i)+","+y(v); }).join(" ");
   s+='<polyline points="'+pts+'" fill="none" stroke="var(--ink-3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>';
@@ -690,31 +714,31 @@ function moodChart(){
     s+='<text x="'+x(i)+'" y="'+(H-8)+'" text-anchor="'+anchor+'" font-size="9.5" fill="var(--ink-3)">'+esc(labels[i])+'</text>';
   });
   vals.forEach(function(v,i){
-    s+='<rect class="hit" data-i="'+i+'" x="'+(x(i)-9)+'" y="'+T+'" width="18" height="'+ih+'" fill="transparent"><title>'+esc(labels[i])+'　'+moodLabel(v)+'（'+v+'）</title></rect>';
+    s+='<rect class="hit" data-i="'+i+'" x="'+(x(i)-9)+'" y="'+Tp+'" width="18" height="'+ih+'" fill="transparent"><title>'+esc(labels[i])+'　'+esc(moodLabel(v))+'（'+v+'）</title></rect>';
   });
   s+='</svg>';
   return {svg:s, vals:vals, labels:labels};
 }
 
 function teamChart(){
-  var W=320,H=150,L=24,R=12,T=12,B=24;
-  var n=TEAM.length, iw=W-L-R, ih=H-T-B;
-  var x=function(i){ return L + i*iw/(n-1); };
-  var y=function(v){ return T + (5-v)/4*ih; };
-  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="チーム平均の元気度の週次推移。縦軸は1から5。">';
+  var W=320,H=150,L2=24,R=12,Tp=12,B=24;
+  var n=TEAM.length, iw=W-L2-R, ih=H-Tp-B;
+  var x=function(i){ return L2 + i*iw/(n-1); };
+  var y=function(v){ return Tp + (5-v)/4*ih; };
+  var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(T("chart.ariaTeam"))+'">';
   [1,3,5].forEach(function(v){
-    s+='<line x1="'+L+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
-    s+='<text x="'+(L-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
+    s+='<line x1="'+L2+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
+    s+='<text x="'+(L2-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
   });
   var area = TEAM.map(function(d,i){ return x(i)+","+y(d.v); }).join(" ");
-  s+='<polygon points="'+L+','+(H-B)+' '+area+' '+(W-R)+','+(H-B)+'" fill="var(--accent-fill)" fill-opacity=".14" stroke="none"/>';
+  s+='<polygon points="'+L2+','+(H-B)+' '+area+' '+(W-R)+','+(H-B)+'" fill="var(--accent-fill)" fill-opacity=".14" stroke="none"/>';
   s+='<polyline points="'+area+'" fill="none" stroke="var(--accent-fill)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
-  s+='<line x1="'+L+'" y1="'+y(TEAM_THRESHOLD)+'" x2="'+(W-R)+'" y2="'+y(TEAM_THRESHOLD)+'" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="4 3"/>';
-  s+='<text x="'+(W-R)+'" y="'+(y(TEAM_THRESHOLD)-5)+'" text-anchor="end" font-size="9.5" fill="var(--warn)" font-weight="700">注意ライン 3.4</text>';
+  s+='<line x1="'+L2+'" y1="'+y(TEAM_THRESHOLD)+'" x2="'+(W-R)+'" y2="'+y(TEAM_THRESHOLD)+'" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="4 3"/>';
+  s+='<text x="'+(W-R)+'" y="'+(y(TEAM_THRESHOLD)-5)+'" text-anchor="end" font-size="9.5" fill="var(--warn)" font-weight="700">'+esc(T("mgr.thresholdLabel",{t:TEAM_THRESHOLD}))+'</text>';
   var last=TEAM[n-1];
   s+='<circle cx="'+x(n-1)+'" cy="'+y(last.v)+'" r="5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"/>';
   s+='<text x="'+(W-R)+'" y="'+(y(last.v)+18)+'" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--ink)">'+last.v.toFixed(1)+'</text>';
-  s+='<text x="'+L+'" y="'+(H-7)+'" font-size="9.5" fill="var(--ink-3)">'+esc(TEAM[0].w)+'</text>';
+  s+='<text x="'+L2+'" y="'+(H-7)+'" font-size="9.5" fill="var(--ink-3)">'+esc(TEAM[0].w)+'</text>';
   s+='<text x="'+(W-R)+'" y="'+(H-7)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+esc(last.w)+'</text>';
   s+='</svg>';
   return s;
@@ -726,74 +750,86 @@ function renderMe(){
   var vals = mc.vals;
   var recent = vals.slice(-5);
   var avg = recent.reduce(function(a,b){return a+b;},0)/recent.length;
+  var isReal = !state.low && moodSeries().length;
 
   var genres = {};
   Object.keys(state.favs).forEach(function(id){
     if(!state.favs[id]) return;
-    var n = NEWS.filter(function(x){return x.id===id;})[0];
-    if(n) genres[n.g] = (genres[n.g]||0)+1;
+    var n = newsList().filter(function(x){return x.id===id;})[0];
+    if(n) genres[n.gkey] = (genres[n.gkey]||0)+1;
   });
-  var base = {"動物":4,"感動":3,"地域":2,"くらし":1};
+  var base = {animal:4, moving:3, local:2, life:1};
   Object.keys(base).forEach(function(k){ genres[k]=(genres[k]||0)+base[k]; });
   var gk = Object.keys(genres).sort(function(a,b){ return genres[b]-genres[a]; });
   var gmax = Math.max.apply(null, gk.map(function(k){return genres[k];}));
 
   var h = '';
   h += '<div class="card" style="display:flex;flex-direction:column;gap:13px">'
-     + '<div class="sec-h"><h2 class="sec-t">気分の推移</h2><span class="sec-s">'+((!state.low && moodSeries().length) ? 'あなたの記録（'+vals.length+'回）' : 'サンプル履歴（'+vals.length+'回分）')+'</span></div>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("me.chartTitle"))+'</h2><span class="sec-s">'
+     + esc(isReal ? T("me.chartReal",{n:vals.length}) : T("me.chartSample",{n:vals.length}))+'</span></div>'
      + '<div style="position:relative">'+mc.svg+'</div>'
-     + '<p class="legend-note"><span>5 = げんき</span><span>1 = つらい</span></p>'
+     + '<p class="legend-note"><span>'+esc(T("me.legendHigh"))+'</span><span>'+esc(T("me.legendLow"))+'</span></p>'
      + '<div class="stats">'
-     + '<div class="stat"><div class="stat-l">直近5回の平均</div><div class="stat-v">'+avg.toFixed(1)+' <small>/ 5</small></div></div>'
-     + '<div class="stat"><div class="stat-l">今日の記録</div><div class="stat-v">'+(state.mood!==null?esc(moodLabel(state.mood)):'<small>まだです</small>')+'</div></div>'
+     + '<div class="stat"><div class="stat-l">'+esc(T("me.avg"))+'</div><div class="stat-v">'+avg.toFixed(1)+' <small>/ 5</small></div></div>'
+     + '<div class="stat"><div class="stat-l">'+esc(T("me.today"))+'</div><div class="stat-v">'+(state.mood!==null?esc(moodLabel(state.mood)):'<small>'+esc(T("me.notYet"))+'</small>')+'</div></div>'
      + '</div>'
-     + '<p class="disclaim">このグラフは<strong>あなたにしか見えません</strong>。気分の記録は共有データベースに送らず、この端末の中にだけ保存しています。</p>'
+     + '<p class="disclaim">'+T("me.privacy")+'</p>'
      + '</div>';
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:12px">'
-     + '<div class="sec-h"><h2 class="sec-t">あなたの好み</h2><span class="sec-s">お気に入りから学習</span></div>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("me.tasteTitle"))+'</h2><span class="sec-s">'+esc(T("me.tasteSub"))+'</span></div>'
      + '<div class="gbars">';
   gk.forEach(function(k){
-    h += '<div class="gbar"><span>'+esc(k)+'</span>'
+    h += '<div class="gbar"><span>'+esc(T("genres."+k))+'</span>'
        + '<span class="track"><span class="fill" style="width:'+Math.round(genres[k]/gmax*100)+'%"></span></span>'
        + '<span class="n">'+genres[k]+'</span></div>';
   });
-  h += '</div><p class="disclaim">気分スコアとお気に入りジャンルの相関を定期的に学習し、配信するニュースの出し分けに反映します。</p></div>';
+  h += '</div><p class="disclaim">'+esc(T("me.tasteNote"))+'</p></div>';
 
   var favIds = Object.keys(state.favs).filter(function(k){ return state.favs[k]; });
   h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
-     + '<div class="sec-h"><h2 class="sec-t">お気に入り</h2><span class="sec-s">'+favIds.length+'件</span></div>';
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("me.favTitle"))+'</h2><span class="sec-s">'+esc(T("me.favCount",{n:favIds.length}))+'</span></div>';
   if(favIds.length===0){
-    h += '<div class="cta-peri"><img src="art/peri-back.png" alt="'+PERI_ALT.back+'">'
-       + '<p class="disclaim">まだありません。ホームのニュースの♡を押すと、ぺりもっちのふくろに貯まっていきます。</p></div>';
+    h += '<div class="cta-peri"><img src="art/peri-back.png" alt="'+esc(T("alt.back"))+'">'
+       + '<p class="disclaim">'+esc(T("me.favEmpty"))+'</p></div>';
   } else {
     h += '<div class="news">';
     favIds.forEach(function(id){
-      var n = NEWS.filter(function(x){return x.id===id;})[0]; if(!n) return;
+      var n = newsList().filter(function(x){return x.id===id;})[0]; if(!n) return;
       h += '<article class="item"><div class="item-b"><span class="tag">'+esc(n.g)+'</span>'
          + '<h3 class="item-t">'+esc(n.t)+'</h3></div>'
-         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="true" aria-label="お気に入りから外す">'+heartSVG+'</button></article>';
+         + '<button class="fav" data-fav="'+n.id+'" aria-pressed="true" aria-label="'+esc(T("me.favTitle"))+'">'+heartSVG+'</button></article>';
     });
     h += '</div>';
   }
   h += '</div>';
 
+  /* ことば */
+  h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("langLabel"))+'</h2></div>'
+     + '<div class="ctl">'
+     + LANGS.map(function(l){
+         return '<button class="stamp" data-lang="'+l+'" aria-pressed="'+(l===lang)+'">'+esc(LANG_NAMES[l])+'</button>';
+       }).join("")
+     + '</div>'
+     + '<p class="disclaim">'+esc(T("langNote"))+'</p></div>';
+
   if(HAS_LIFF){
     h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
-       + '<div class="sec-h"><h2 class="sec-t">タイムラインに出るなまえ</h2></div>'
+       + '<div class="sec-h"><h2 class="sec-t">'+esc(T("me.nameTitle"))+'</h2></div>'
        + '<input type="text" id="me-name" maxlength="20" value="'+esc(me.name)+'">'
-       + '<button class="btn btn-ghost btn-full" data-act="rename">なまえを変える</button>'
-       + '<p class="disclaim">これから書く投稿に反映されます。本名でなくて構いません。</p></div>';
+       + '<button class="btn btn-ghost btn-full" data-act="rename">'+esc(T("me.nameButton"))+'</button>'
+       + '<p class="disclaim">'+esc(T("me.nameNote"))+'</p></div>';
   }
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:12px">'
-     + '<div class="sec-h"><h2 class="sec-t">誰に何が見えるか</h2></div>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("me.whoTitle"))+'</h2></div>'
      + '<div class="who-tbl">'
-     + '<div class="who-row"><span class="who-k">あなた</span><span class="who-v">自分の気分ログ（この端末の中だけに保存）、お気に入り、投稿履歴、ぺりもっちからの個別の声かけ</span></div>'
-     + '<div class="who-row"><span class="who-k">マネージャー</span><span class="who-v">チーム平均の推移と、「ケアが必要かもしれない人が◯名」という匿名の件数のみ。<strong>個人名・個人のスコアは表示されません。</strong></span></div>'
-     + '<div class="who-row"><span class="who-k">人事・産業医</span><span class="who-v">あなたが同意のボタンを押した場合に限り、個別の相談としてつながります。</span></div>'
+     + '<div class="who-row"><span class="who-k">'+esc(T("me.whoYou"))+'</span><span class="who-v">'+T("me.whoYouV")+'</span></div>'
+     + '<div class="who-row"><span class="who-k">'+esc(T("me.whoMgr"))+'</span><span class="who-v">'+T("me.whoMgrV")+'</span></div>'
+     + '<div class="who-row"><span class="who-k">'+esc(T("me.whoHr"))+'</span><span class="who-v">'+T("me.whoHrV")+'</span></div>'
      + '</div>'
-     + '<p class="foot">このアプリは体調や気分の記録を助けるものであり、医療的な診断・助言を行うものではありません。つらさが続くときは産業医や医療機関にご相談ください。</p>'
+     + '<p class="foot">'+esc(T("me.medical"))+'</p>'
      + '</div>';
 
   document.getElementById("tab-me").innerHTML = h;
@@ -807,42 +843,34 @@ function renderMgr(){
   var below = last.v < TEAM_THRESHOLD;
 
   var h = '<div class="mgr-banner">'
-        + '<span class="t">マネージャーに見えている画面</span>'
-        + '<p class="d">個人名・個人ごとのスコア・誰がどの投稿をしたかは、この画面には一切表示されません。表示されるのは集計値だけです。</p>'
-        + '<button data-act="unmgr">社員の画面に戻る</button></div>';
+        + '<span class="t">'+esc(T("mgr.bannerTitle"))+'</span>'
+        + '<p class="d">'+esc(T("mgr.bannerBody"))+'</p>'
+        + '<button data-act="unmgr">'+esc(T("mgr.back"))+'</button></div>';
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:13px">'
-     + '<div class="sec-h"><h2 class="sec-t">チームの元気度</h2><span class="sec-s">カスタマーサクセス / 9名</span></div>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.teamTitle"))+'</h2><span class="sec-s">'+esc(T("mgr.teamSub"))+'</span></div>'
      + teamChart()
-     + '<p class="legend-note"><span>週平均（5段階）</span><span>直近8週</span></p>'
+     + '<p class="legend-note"><span>'+esc(T("mgr.legend1"))+'</span><span>'+esc(T("mgr.legend2"))+'</span></p>'
      + '<div class="stats">'
-     + '<div class="stat"><div class="stat-l">今週の平均</div><div class="stat-v">'+last.v.toFixed(1)+' <small>/ 5</small></div></div>'
-     + '<div class="stat"><div class="stat-l">先週比</div><div class="stat-v">'+diff+'</div></div>'
+     + '<div class="stat"><div class="stat-l">'+esc(T("mgr.avgWeek"))+'</div><div class="stat-v">'+last.v.toFixed(1)+' <small>/ 5</small></div></div>'
+     + '<div class="stat"><div class="stat-l">'+esc(T("mgr.vsLast"))+'</div><div class="stat-v">'+diff+'</div></div>'
      + '</div>';
-  if(below){
-    h += '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>今週は注意ライン 3.4 を下回っています</div>';
-  } else {
-    h += '<div class="chip chip-good" style="align-self:flex-start"><span class="dot"></span>注意ラインの範囲内です</div>';
-  }
+  h += '<div class="chip '+(below?'chip-warn':'chip-good')+'" style="align-self:flex-start"><span class="dot"></span>'
+     + esc(below ? T("mgr.below",{t:TEAM_THRESHOLD}) : T("mgr.within")) + '</div>';
   h += '</div>';
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
-     + '<div class="sec-h"><h2 class="sec-t">ケアの目安</h2></div>'
-     + '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>ケアが必要かもしれない人：'+care+'名</div>'
-     + '<p class="disclaim">3日以上続けて低いスコアが記録された人数です。<strong>誰であるかは表示されません。</strong>本人には、ぺりもっちから直接そっと声をかけています。</p>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.careTitle"))+'</h2></div>'
+     + '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>'+esc(T("mgr.careChip",{n:care}))+'</div>'
+     + '<p class="disclaim">'+T("mgr.careNote")+'</p>'
      + '<ul class="nolist" style="margin-top:4px">'
-     + '<li><span class="mk">→</span><span>1on1の頻度を一時的に上げる（全員に対して、名指しせずに）</span></li>'
-     + '<li><span class="mk">→</span><span>今週の締め切りのうち、後ろ倒しできるものを探す</span></li>'
-     + '<li><span class="mk">→</span><span>産業医面談の案内を、チーム全体にあらためて共有する</span></li>'
+     + ["a1","a2","a3"].map(function(k){ return '<li><span class="mk">→</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
      + '</ul></div>';
 
   h += '<div class="card card-quiet" style="display:flex;flex-direction:column;gap:11px">'
-     + '<div class="sec-h"><h2 class="sec-t">この画面に出ないもの</h2></div>'
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.notShownTitle"))+'</h2></div>'
      + '<ul class="nolist">'
-     + '<li><span class="mk">✕</span><span>誰がどのスコアを付けたか</span></li>'
-     + '<li><span class="mk">✕</span><span>個人ごとの気分の推移グラフ</span></li>'
-     + '<li><span class="mk">✕</span><span>投稿と気分スコアの紐付け</span></li>'
-     + '<li><span class="mk">✕</span><span>チーム人数が5名未満のときの集計値（個人が特定できるため非表示）</span></li>'
+     + ["n1","n2","n3","n4"].map(function(k){ return '<li><span class="mk">✕</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
      + '</ul></div>';
 
   document.getElementById("tab-mgr").innerHTML = h;
@@ -853,10 +881,9 @@ function renderTabs(){
   var tb = document.getElementById("tabbar");
   if(state.mgr){ tb.hidden = true; return; }
   tb.hidden = false;
-  var items = [["home","ホーム"],["feed","みんな"],["me","じぶん"]];
-  tb.innerHTML = items.map(function(it){
-    return '<button class="tab" role="tab" data-tab="'+it[0]+'" aria-selected="'+(state.view===it[0])+'">'
-      + TAB_ICONS[it[0]] + '<span>'+it[1]+'</span></button>';
+  tb.innerHTML = ["home","feed","me"].map(function(k){
+    return '<button class="tab" role="tab" data-tab="'+k+'" aria-selected="'+(state.view===k)+'">'
+      + TAB_ICONS[k] + '<span>'+esc(T("tabs."+k))+'</span></button>';
   }).join("");
 }
 
@@ -889,19 +916,19 @@ function openCompose(){
   var phone=document.getElementById("phone");
   var bg=document.createElement("div"); bg.className="sheet-bg"; bg.id="sheet-bg";
   var sh=document.createElement("div"); sh.className="sheet"; sh.id="sheet";
-  sh.setAttribute("role","dialog"); sh.setAttribute("aria-label","今日のいいことを書く");
+  sh.setAttribute("role","dialog"); sh.setAttribute("aria-label", T("compose.title"));
   sh.innerHTML =
-      '<div class="sheet-h"><h2 class="sec-t">今日のいいこと</h2>'
-    + '<button class="btn btn-ghost" data-act="closeSheet" style="padding:7px 12px">とじる</button></div>'
-    + '<textarea id="compose-text" maxlength="140" placeholder="一言でどうぞ。「エレベーターで知らない人にドアを押さえてもらった」くらいで十分です。"></textarea>'
+      '<div class="sheet-h"><h2 class="sec-t">'+esc(T("compose.title"))+'</h2>'
+    + '<button class="btn btn-ghost" data-act="closeSheet" style="padding:7px 12px">'+esc(T("compose.close"))+'</button></div>'
+    + '<textarea id="compose-text" maxlength="140" placeholder="'+esc(T("compose.placeholder"))+'"></textarea>'
     + '<div class="sheet-row">'
-    + '<button class="stamp" id="use-topic" aria-pressed="false">お題「'+esc(TOPIC)+'」で書く</button>'
-    + '<button class="stamp" id="add-photo" aria-pressed="false">写真をつける</button>'
+    + '<button class="stamp" id="use-topic" aria-pressed="false">'+esc(T("compose.useTopic",{topic:T("topic")}))+'</button>'
+    + '<button class="stamp" id="add-photo" aria-pressed="false">'+esc(T("compose.addPhoto"))+'</button>'
     + '<span class="count tnum" id="cnt">0 / 140</span></div>'
     + '<div id="photo-slot"></div>'
-    + '<button class="btn btn-full" data-act="submit">投稿する</button>'
-    + '<p class="disclaim warnbox"><strong>顧客名・案件名・社外秘は書かないでください。</strong><br>'
-    + '投稿は社内タイムライン（全員）に表示されます。気分スコアとは紐付きません。</p>';
+    + '<button class="btn btn-full" data-act="submit">'+esc(T("compose.submit"))+'</button>'
+    + '<p class="disclaim warnbox"><strong>'+esc(T("compose.warnStrong"))+'</strong><br>'
+    + esc(T("compose.warnBody"))+'</p>';
   phone.appendChild(bg); phone.appendChild(sh);
   var ta=document.getElementById("compose-text");
   ta.addEventListener("input", function(){ document.getElementById("cnt").textContent = ta.value.length+" / 140"; });
@@ -916,27 +943,39 @@ var pendingPhoto=null;
 function submitPost(){
   var ta=document.getElementById("compose-text");
   var txt=(ta.value||"").trim();
-  if(!txt){ toast("一言だけでも書いてみてください"); ta.focus(); return; }
+  if(!txt){ toast(T("toast.writeSomething")); ta.focus(); return; }
   var photo=pendingPhoto; pendingPhoto=null;
   closeCompose();
   if(HAS_DB){
     state.view="feed"; show();
     dbAddPost(txt, photo)
-      .then(function(){ toast("投稿しました"); })
-      .catch(function(e){ console.warn("post failed", e); toast("投稿できませんでした。通信を確認してください"); });
+      .then(function(){ toast(T("toast.posted")); })
+      .catch(function(e){ console.warn("post failed", e); toast(T("toast.postFailed")); });
     return;
   }
   var id="own"+Date.now();
-  state.posts.unshift({id:id, name:me.name, dept:me.dept||"マーケティング", hue:"var(--accent-fill)", ago:"たった今",
-    text:txt, photo:photo, r:{}, own:true});
+  state.posts.unshift({id:id, name:me.name||T("you"), dept:myDept(), hue:"var(--accent-fill)",
+    ago:T("ago.now"), text:txt, photo:photo, r:{}, own:true});
   state.counts[id]=Object.assign({},ZERO_R);
   save(); state.view="feed"; renderAll();
-  toast("投稿しました");
+  toast(T("toast.posted"));
+}
+
+/* ============ 接続状態（デモ用パネル・日本語のまま） ============ */
+function markMode(){
+  var el=document.getElementById("mode");
+  if(el){
+    el.innerHTML = esc(HAS_LIFF ? "LINEログイン済み（"+me.name+"）" : "LINE未接続（デモ表示）")
+                 + "<br>" + esc(HAS_DB ? "投稿のみFirestoreで共有中" : "投稿もこの端末内にのみ保存")
+                 + "<br>" + esc("気分ログは常に端末内のみ")
+                 + "<br>" + esc("表示言語: " + LANG_NAMES[lang]);
+  }
+  var sw=document.getElementById("seedwrap"); if(sw) sw.hidden = !HAS_DB;
 }
 
 /* ============ events ============ */
 document.addEventListener("click", function(ev){
-  var t=ev.target.closest ? ev.target.closest("[data-mood],[data-fav],[data-stamp],[data-tab],[data-act],[data-dept],#gear,#btn-mgr,#btn-low,#btn-reset,#btn-seed,#btn-hist,#use-topic,#add-photo") : null;
+  var t=ev.target.closest ? ev.target.closest("[data-mood],[data-fav],[data-stamp],[data-tab],[data-act],[data-dept],[data-lang],#gear,#btn-mgr,#btn-low,#btn-reset,#btn-seed,#btn-hist,#use-topic,#add-photo") : null;
   if(!t) return;
 
   if(t.id==="gear"){
@@ -974,8 +1013,7 @@ document.addEventListener("click", function(ev){
   if(t.id==="btn-reset"){
     try{ localStorage.removeItem(KEY); }catch(e){}
     state.mood=null; state.moodLog={}; state.favs={}; state.mine={}; state.low=false; state.quiet=false; state.mgr=false; state.view="home";
-    state.posts=SEED_POSTS.slice(); state.counts={};
-    SEED_POSTS.forEach(function(p){ state.counts[p.id]=Object.assign({},p.r); });
+    state.posts=[]; state.counts={}; resetSeedPosts();
     document.getElementById("btn-low").setAttribute("aria-pressed","false");
     document.getElementById("btn-mgr").setAttribute("aria-pressed","false");
     renderAll(); toast("最初の状態に戻しました"); return;
@@ -983,7 +1021,8 @@ document.addEventListener("click", function(ev){
   if(t.id==="use-topic"){
     var on=t.getAttribute("aria-pressed")==="true";
     var ta=document.getElementById("compose-text");
-    if(!on && ta.value.indexOf(TOPIC)===-1){ ta.value = TOPIC+"：" + ta.value; }
+    var tp=T("topic");
+    if(!on && ta.value.indexOf(tp)===-1){ ta.value = tp+": " + ta.value; }
     t.setAttribute("aria-pressed", String(!on));
     document.getElementById("cnt").textContent = ta.value.length+" / 140"; ta.focus(); return;
   }
@@ -993,9 +1032,19 @@ document.addEventListener("click", function(ev){
     if(onp){ slot.innerHTML=""; pendingPhoto=null; t.setAttribute("aria-pressed","false"); }
     else{
       pendingPhoto="linear-gradient(135deg,#D9E3D6,#9CB49A)";
-      slot.innerHTML='<div class="photo" style="background:'+pendingPhoto+'"><span>写真</span></div>';
+      slot.innerHTML='<div class="photo" style="background:'+pendingPhoto+'"><span>'+esc(T("compose.photo"))+'</span></div>';
       t.setAttribute("aria-pressed","true");
     }
+    return;
+  }
+
+  var lg=t.getAttribute("data-lang");
+  if(lg && I18N[lg]){
+    lang=lg;
+    try{ localStorage.setItem(KEY+".lang", lg); }catch(e){}
+    resetSeedPosts();
+    renderAll(); markMode();
+    document.documentElement.setAttribute("lang", lg);
     return;
   }
 
@@ -1004,7 +1053,7 @@ document.addEventListener("click", function(ev){
     state.mood=parseInt(mood,10);
     state.moodLog[todayKey()]=state.mood;
     save(); renderAll();
-    toast("記録しました。"+moodLabel(state.mood)+"な一日になりますように。"); return;
+    toast(T("toast.recorded",{mood:moodLabel(state.mood)})); return;
   }
 
   var fav=t.getAttribute("data-fav");
@@ -1031,15 +1080,15 @@ document.addEventListener("click", function(ev){
   }
 
   var dept=t.getAttribute("data-dept");
-  if(dept){
+  if(dept!==null && dept!==undefined && dept!==""){
     var ni=document.getElementById("reg-name");
     var nm=ni ? (ni.value||"").trim() : "";
-    if(ni && !nm){ toast("なまえを入れてください"); ni.focus(); return; }
+    if(ni && !nm){ toast(T("toast.enterName")); ni.focus(); return; }
     if(nm) me.name=nm.slice(0,20);
-    me.dept=dept;
-    try{ localStorage.setItem(KEY+".dept", dept); localStorage.setItem(KEY+".name", me.name); }catch(e){}
+    me.deptIdx=parseInt(dept,10);
+    try{ localStorage.setItem(KEY+".dept", String(me.deptIdx)); localStorage.setItem(KEY+".name", me.name); }catch(e){}
     renderAll(); markMode();
-    toast("ようこそ、"+me.name+"さん"); return;
+    toast(T("toast.welcome",{name:me.name})); return;
   }
 
   var tab=t.getAttribute("data-tab");
@@ -1056,13 +1105,13 @@ document.addEventListener("click", function(ev){
   if(act==="rename"){
     var mi=document.getElementById("me-name");
     var v=(mi.value||"").trim();
-    if(!v){ toast("なまえを入れてください"); mi.focus(); return; }
+    if(!v){ toast(T("toast.enterName")); mi.focus(); return; }
     me.name=v.slice(0,20);
     try{ localStorage.setItem(KEY+".name", me.name); }catch(e){}
-    markMode(); toast("なまえを変えました"); return;
+    markMode(); toast(T("toast.renamed")); return;
   }
-  if(act==="consult"){ toast("あなたが同意した場合にだけ、産業医につながります"); return; }
-  if(act==="later"){ state.quiet=true; renderHome(); toast("わかった。またいつでも。"); return; }
+  if(act==="consult"){ toast(T("toast.consult")); return; }
+  if(act==="later"){ state.quiet=true; renderHome(); toast(T("toast.later")); return; }
 });
 
 document.addEventListener("click", function(ev){
@@ -1073,19 +1122,16 @@ document.addEventListener("keydown", function(ev){
 });
 
 /* ============ boot ============ */
-function markMode(){
-  var el=document.getElementById("mode");
-  if(el){
-    el.innerHTML = esc(HAS_LIFF ? "LINEログイン済み（"+me.name+"）" : "LINE未接続（デモ表示）")
-                 + "<br>" + esc(HAS_DB ? "投稿のみFirestoreで共有中" : "投稿もこの端末内にのみ保存")
-                 + "<br>" + esc("気分ログは常に端末内のみ");
-  }
-  var sw=document.getElementById("seedwrap"); if(sw) sw.hidden = !HAS_DB;
-}
-
 function boot(){
+  lang = detectLang();
+  document.documentElement.setAttribute("lang", lang);
+  me.name = T("you");
   load();
-  try{ var d=localStorage.getItem(KEY+".dept"); if(d) me.dept=d; }catch(e){}
+  try{
+    var d=localStorage.getItem(KEY+".dept");
+    if(d!==null && d!=="" && !isNaN(parseInt(d,10))) me.deptIdx=parseInt(d,10);
+    var nm=localStorage.getItem(KEY+".name"); if(nm) me.name=nm;
+  }catch(e){}
 
   var chain = Promise.resolve();
   if(CFG.liffId && typeof liff !== "undefined"){
@@ -1094,8 +1140,14 @@ function boot(){
       return liff.getProfile().then(function(pr){
         var saved=null; try{ saved=localStorage.getItem(KEY+".name"); }catch(e){}
         me.userId = pr.userId;
-        me.name   = saved || pr.displayName || "名無し";
+        me.name   = saved || pr.displayName || T("anon");
         HAS_LIFF  = true;
+        /* 端末の言語より LINE の言語設定を優先（ただし手動で選んだ設定が最優先） */
+        var manual=null; try{ manual=localStorage.getItem(KEY+".lang"); }catch(e){}
+        if(!manual){
+          var l2=detectLang();
+          if(l2!==lang){ lang=l2; document.documentElement.setAttribute("lang", lang); }
+        }
       });
     }).catch(function(e){ console.warn("LIFF init failed — デモ表示で続行します", e); });
   }
@@ -1108,8 +1160,9 @@ function boot(){
         HAS_DB = true;
       }catch(e){ console.warn("Firebase init failed — 端末内保存で続行します", e); }
     }
+    resetSeedPosts();
     if(HAS_DB) subscribePosts();
-    if(HAS_LIFF && !me.dept){ markMode(); renderRegister(); return; }
+    if(HAS_LIFF && me.deptIdx===null){ markMode(); renderRegister(); return; }
     var w=wantedTab(); if(w) state.view=w;
     renderAll(); markMode();
   });
@@ -1117,6 +1170,7 @@ function boot(){
 
 boot();
 })();
+
 </script>
 </body>
 </html>
