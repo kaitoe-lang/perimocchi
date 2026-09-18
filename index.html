@@ -411,13 +411,16 @@ var state = {
 SEED_POSTS.forEach(function(p){ state.counts[p.id]=Object.assign({},p.r); });
 
 var KEY="poka.v1";
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify({mood:state.mood,moodLog:state.moodLog,favs:state.favs,mine:state.mine,counts:state.counts,extra:state.posts.filter(function(p){return p.own;})})); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY, JSON.stringify({moodLog:state.moodLog,favs:state.favs,mine:state.mine,counts:state.counts,extra:state.posts.filter(function(p){return p.own;})})); }catch(e){} }
 function load(){
   try{
     var raw=localStorage.getItem(KEY); if(!raw) return;
     var o=JSON.parse(raw);
-    if(typeof o.mood==="number") state.mood=o.mood;
     if(o.moodLog) state.moodLog=o.moodLog;
+    /* 今日ぶんの記録があるときだけ復元する。
+       日付が変わったら state.mood は null に戻り、朝の挨拶から始まる。 */
+    var td=state.moodLog[todayKey()];
+    state.mood = (typeof td==="number") ? td : null;
     if(o.favs) state.favs=o.favs;
     if(o.mine) state.mine=o.mine;
     if(o.counts) Object.keys(o.counts).forEach(function(k){ state.counts[k]=o.counts[k]; });
