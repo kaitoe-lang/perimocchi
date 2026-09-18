@@ -318,7 +318,7 @@ textarea::placeholder{color:var(--ink-3)}
   </aside>
 
   <div class="phone" id="phone">
-    <div class="liffbar">
+    <div class="liffbar" id="liffbar">
       <span class="x" aria-hidden="true">✕</span>
       <span class="who"><span class="liffdot" aria-hidden="true">L</span>ぺりもっち</span>
       <span class="more" aria-hidden="true">⋯</span>
@@ -963,6 +963,9 @@ function submitPost(){
 
 /* ============ 接続状態（デモ用パネル・日本語のまま） ============ */
 function markMode(){
+  /* LINEの中ではLINE自身がヘッダー（✕付き）を出すので、この偽ヘッダーは隠す。
+     ブラウザでデモするときだけ「LINEの中である」ことを示すために残す。 */
+  var bar=document.getElementById("liffbar"); if(bar) bar.hidden = HAS_LIFF;
   var el=document.getElementById("mode");
   if(el){
     el.innerHTML = esc(HAS_LIFF ? "LINEログイン済み（"+me.name+"）" : "LINE未接続（デモ表示）")
