@@ -286,7 +286,7 @@ textarea::placeholder{color:var(--ink-3)}
         <div class="push">
           <div class="push-ico">ぺ</div>
           <div class="push-body">
-            <div class="push-t"><span>ぺりもっち</span><span class="tnum">8:30</span></div>
+            <div class="push-t"><span>ぺりもっち</span><span class="tnum">9:30</span></div>
             <div class="push-m">おはよう。今日の気分、どんな感じ？</div>
           </div>
         </div>
@@ -415,6 +415,9 @@ var TEAM = [
   {w:"8/25",v:3.5},{w:"9/1",v:3.4},{w:"9/8",v:3.6},{w:"9/15",v:3.2}
 ];
 var TEAM_THRESHOLD = 3.4;
+var MIN_TEAM   = 5;   /* この人数未満の日は集計を出さない（個人が推測できるため） */
+var CARE_STREAK = 3;  /* 直近この回数ぶんが連続して低スコアなら「要ケア」とみなす */
+var teamDays = [];    /* 共有DBから読んだ日次の集計（合計・人数・要ケア数だけ） */
 
 /* ============ state ============ */
 var BASE_LOG = [4,3,4,5,3,2,3,4,4,3];
@@ -516,6 +519,58 @@ function dbReact(postId, key, delta){
   var u={}; u["r."+key]=firebase.firestore.FieldValue.increment(delta);
   return db.collection("posts").doc(postId).update(u);
 }
+/* ここが「本人にしか見えない」と「全体は把握できる」を両立させている箇所。
+   端末の中で今日の値と要ケア判定まで済ませ、共有DBへは
+   「合計に +v」「人数に +1」「要ケアに +0か+1」という加算命令だけを送る。
+   userId も日時も個人の行も送らないので、あとから個人を復元できない。 */
+function careFlag(){
+  var ks = Object.keys(state.moodLog).sort();
+  if(ks.length < CARE_STREAK) return 0;
+  var last = ks.slice(-CARE_STREAK), i;
+  for(i=0;i<last.length;i++) if(state.moodLog[last[i]] > 2) return 0;
+  return 1;
+}
+function dbSendMood(v){
+  if(!HAS_DB) return;
+  var today = todayKey(), sent = null;
+  try{ sent = JSON.parse(localStorage.getItem(KEY+".sent") || "null"); }catch(e){}
+  var care = careFlag(), dSum, dCount, dCare;
+  if(sent && sent.date === today){          /* 同じ日に選び直した → 差分だけ送る */
+    dSum = v - sent.value; dCount = 0; dCare = care - sent.care;
+  } else {
+    dSum = v; dCount = 1; dCare = care;
+  }
+  if(!dSum && !dCount && !dCare) return;
+  var inc = firebase.firestore.FieldValue.increment;
+  db.collection("teamStats").doc(today)
+    .set({ sum: inc(dSum), count: inc(dCount), care: inc(dCare) }, { merge:true })
+    .then(function(){
+      try{ localStorage.setItem(KEY+".sent", JSON.stringify({date:today, value:v, care:care})); }catch(e){}
+    })
+    .catch(function(e){ console.warn("teamStats failed", e); });
+}
+function subscribeTeam(){
+  db.collection("teamStats").onSnapshot(function(sn){
+    var a=[];
+    sn.forEach(function(d){
+      var v=d.data()||{};
+      a.push({ day:d.id, sum:+v.sum||0, count:+v.count||0, care:+v.care||0 });
+    });
+    a.sort(function(x,y){ return x.day<y.day ? -1 : 1; });
+    teamDays = a;
+    renderMgr();
+  }, function(e){ console.warn("teamStats subscribe failed", e); });
+}
+/* 人数がそろった日だけを集計対象にする */
+function teamSeries(){
+  return teamDays.filter(function(d){ return d.count >= MIN_TEAM; })
+                 .slice(-10)
+                 .map(function(d){
+                   return { w: parseInt(d.day.slice(4,6),10)+"/"+parseInt(d.day.slice(6,8),10),
+                            v: d.sum/d.count, care: d.care, count: d.count };
+                 });
+}
+
 function subscribePosts(){
   if(unsubPosts) unsubPosts();
   unsubPosts = db.collection("posts").orderBy("createdAt","desc").limit(50).onSnapshot(function(sn){
@@ -720,25 +775,25 @@ function moodChart(){
   return {svg:s, vals:vals, labels:labels};
 }
 
-function teamChart(){
+function teamChart(DATA){
   var W=320,H=150,L2=24,R=12,Tp=12,B=24;
-  var n=TEAM.length, iw=W-L2-R, ih=H-Tp-B;
-  var x=function(i){ return L2 + i*iw/(n-1); };
+  var n=DATA.length, iw=W-L2-R, ih=H-Tp-B;
+  var x=function(i){ return L2 + (n===1?iw/2:i*iw/(n-1)); };
   var y=function(v){ return Tp + (5-v)/4*ih; };
   var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(T("chart.ariaTeam"))+'">';
   [1,3,5].forEach(function(v){
     s+='<line x1="'+L2+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="var(--line-soft)" stroke-width="1"/>';
     s+='<text x="'+(L2-7)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+v+'</text>';
   });
-  var area = TEAM.map(function(d,i){ return x(i)+","+y(d.v); }).join(" ");
+  var area = DATA.map(function(d,i){ return x(i)+","+y(d.v); }).join(" ");
   s+='<polygon points="'+L2+','+(H-B)+' '+area+' '+(W-R)+','+(H-B)+'" fill="var(--accent-fill)" fill-opacity=".14" stroke="none"/>';
   s+='<polyline points="'+area+'" fill="none" stroke="var(--accent-fill)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
   s+='<line x1="'+L2+'" y1="'+y(TEAM_THRESHOLD)+'" x2="'+(W-R)+'" y2="'+y(TEAM_THRESHOLD)+'" stroke="var(--warn)" stroke-width="1.4" stroke-dasharray="4 3"/>';
   s+='<text x="'+(W-R)+'" y="'+(y(TEAM_THRESHOLD)-5)+'" text-anchor="end" font-size="9.5" fill="var(--warn)" font-weight="700">'+esc(T("mgr.thresholdLabel",{t:TEAM_THRESHOLD}))+'</text>';
-  var last=TEAM[n-1];
+  var last=DATA[n-1];
   s+='<circle cx="'+x(n-1)+'" cy="'+y(last.v)+'" r="5" fill="var(--warn)" stroke="var(--surface)" stroke-width="2"/>';
   s+='<text x="'+(W-R)+'" y="'+(y(last.v)+18)+'" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--ink)">'+last.v.toFixed(1)+'</text>';
-  s+='<text x="'+L2+'" y="'+(H-7)+'" font-size="9.5" fill="var(--ink-3)">'+esc(TEAM[0].w)+'</text>';
+  s+='<text x="'+L2+'" y="'+(H-7)+'" font-size="9.5" fill="var(--ink-3)">'+esc(DATA[0].w)+'</text>';
   s+='<text x="'+(W-R)+'" y="'+(H-7)+'" text-anchor="end" font-size="9.5" fill="var(--ink-3)">'+esc(last.w)+'</text>';
   s+='</svg>';
   return s;
@@ -837,9 +892,14 @@ function renderMe(){
 
 /* ============ render: manager ============ */
 function renderMgr(){
-  var last = TEAM[TEAM.length-1], prev = TEAM[TEAM.length-2];
+  /* 共有DBにあるのは日ごとの合計・人数・要ケア数だけ。個人の行は存在しない。
+     さらに MIN_TEAM 未満の日は、人数から個人が推測できるので集計対象から外す。 */
+  var real   = HAS_DB ? teamSeries() : [];
+  var isReal = real.length >= 2;
+  var DATA   = isReal ? real : TEAM;
+  var last = DATA[DATA.length-1], prev = DATA[DATA.length-2];
   var diff = (last.v - prev.v).toFixed(1);
-  var care = state.low ? 2 : 1;
+  var care = isReal ? last.care : (state.low ? 2 : 1);
   var below = last.v < TEAM_THRESHOLD;
 
   var h = '<div class="mgr-banner">'
@@ -848,29 +908,35 @@ function renderMgr(){
         + '<button data-act="unmgr">'+esc(T("mgr.back"))+'</button></div>';
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:13px">'
-     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.teamTitle"))+'</h2><span class="sec-s">'+esc(T("mgr.teamSub"))+'</span></div>'
-     + teamChart()
+     + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.teamTitle"))+'</h2><span class="sec-s">'
+     + esc(isReal ? T("mgr.sourceReal",{n:real.length}) : T("mgr.sourceSample"))+'</span></div>';
+  if(!isReal){
+    h += '<p class="disclaim warnbox">'+esc(T("mgr.noData",{m:MIN_TEAM}))+'</p>';
+  }
+  h += teamChart(DATA)
      + '<p class="legend-note"><span>'+esc(T("mgr.legend1"))+'</span><span>'+esc(T("mgr.legend2"))+'</span></p>'
      + '<div class="stats">'
      + '<div class="stat"><div class="stat-l">'+esc(T("mgr.avgWeek"))+'</div><div class="stat-v">'+last.v.toFixed(1)+' <small>/ 5</small></div></div>'
      + '<div class="stat"><div class="stat-l">'+esc(T("mgr.vsLast"))+'</div><div class="stat-v">'+diff+'</div></div>'
      + '</div>';
   h += '<div class="chip '+(below?'chip-warn':'chip-good')+'" style="align-self:flex-start"><span class="dot"></span>'
-     + esc(below ? T("mgr.below",{t:TEAM_THRESHOLD}) : T("mgr.within")) + '</div>';
-  h += '</div>';
+     + esc(below ? T("mgr.below",{t:TEAM_THRESHOLD}) : T("mgr.within")) + '</div>'
+     + '<p class="disclaim">'+esc(T("mgr.anon"))+'</p>'
+     + '</div>';
 
   h += '<div class="card" style="display:flex;flex-direction:column;gap:11px">'
      + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.careTitle"))+'</h2></div>'
      + '<div class="chip chip-warn" style="align-self:flex-start"><span class="dot"></span>'+esc(T("mgr.careChip",{n:care}))+'</div>'
      + '<p class="disclaim">'+T("mgr.careNote")+'</p>'
+     + '<p class="disclaim">'+esc(T("mgr.minNote",{m:MIN_TEAM}))+'</p>'
      + '<ul class="nolist" style="margin-top:4px">'
-     + ["a1","a2","a3"].map(function(k){ return '<li><span class="mk">→</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
+     + ["a1","a2","a3"].map(function(k){ return '<li><span class="mk">\u2192</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
      + '</ul></div>';
 
   h += '<div class="card card-quiet" style="display:flex;flex-direction:column;gap:11px">'
      + '<div class="sec-h"><h2 class="sec-t">'+esc(T("mgr.notShownTitle"))+'</h2></div>'
      + '<ul class="nolist">'
-     + ["n1","n2","n3","n4"].map(function(k){ return '<li><span class="mk">✕</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
+     + ["n1","n2","n3","n4"].map(function(k){ return '<li><span class="mk">\u2715</span><span>'+esc(T("mgr."+k))+'</span></li>'; }).join("")
      + '</ul></div>';
 
   document.getElementById("tab-mgr").innerHTML = h;
@@ -1055,7 +1121,7 @@ document.addEventListener("click", function(ev){
   if(mood){
     state.mood=parseInt(mood,10);
     state.moodLog[todayKey()]=state.mood;
-    save(); renderAll();
+    save(); dbSendMood(state.mood); renderAll();
     toast(T("toast.recorded",{mood:moodLabel(state.mood)})); return;
   }
 
@@ -1164,7 +1230,7 @@ function boot(){
       }catch(e){ console.warn("Firebase init failed — 端末内保存で続行します", e); }
     }
     resetSeedPosts();
-    if(HAS_DB) subscribePosts();
+    if(HAS_DB){ subscribePosts(); subscribeTeam(); }
     if(HAS_LIFF && me.deptIdx===null){ markMode(); renderRegister(); return; }
     var w=wantedTab(); if(w) state.view=w;
     renderAll(); markMode();
