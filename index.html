@@ -190,6 +190,11 @@ ul{padding:0;list-style:none}
 .post-sub{font-size:11px;color:var(--ink-3)}
 .post-text{font-size:13.5px;line-height:1.75}
 .photo{border-radius:11px;height:132px;display:flex;align-items:flex-end;padding:9px;border:1px solid var(--line)}
+/* 本物の写真は <img> で出し、元の縦横比のまま表示する。
+   .photo（高さ132px固定）は旧仕様の色板専用。縦長の写真をそこに入れると帯状に切れる。 */
+.photo-img{display:block;max-width:100%;max-height:420px;width:auto;height:auto;
+  margin:0 auto;border-radius:11px;border:1px solid var(--line);background:var(--surface-2)}
+.photo-img.sm{max-height:200px}
 .photo span{font-size:10px;font-weight:700;letter-spacing:.1em;background:var(--surface);color:var(--ink-3);padding:2px 7px;border-radius:5px;border:1px solid var(--line)}
 .stamps{display:flex;gap:6px;flex-wrap:wrap}
 .stamp{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface-2);font-size:12px;color:var(--ink-2);transition:border-color .15s,background .15s}
@@ -577,8 +582,8 @@ function teamSeries(){
    Firestore の1ドキュメント上限は約1MB。下の上限はそれに対して十分小さくとってある。
    タイムラインは最大50件読むので、50×110KB＝約5.5MBが1回の最大転送量。
    Sparkの無料枠（10GB/月）に対して余裕がある範囲。 */
-var PHOTO_MAX_EDGE  = 820;        /* 長辺の上限（px） */
-var PHOTO_MAX_BYTES = 110 * 1024; /* 1枚あたりの上限 */
+var PHOTO_MAX_EDGE  = 720;       /* 長辺の上限（px）。表示は約330ptなので2倍以上あれば足りる */
+var PHOTO_MAX_BYTES = 70 * 1024; /* 1枚あたりの上限。小さいほどLINE内ブラウザで確実に表示される */
 
 /* 投稿の photo には2種類の値が入りうる。
    - 旧：CSSのグラデーション文字列（仮実装時代の色板。既存の投稿に残っている）
@@ -595,6 +600,19 @@ function photoStyle(v){
   if(DATA_IMG_RE.test(v)) return "background-image:url('"+v+"');background-size:cover;background-position:center";
   if(GRAD_RE.test(v))     return "background:"+v;
   return "";   /* 想定外の値は描画しない */
+}
+
+/* 投稿に添える写真のHTML。
+   本物の写真は <img>（縦横比そのまま）、旧仕様の色板は従来どおり固定高の箱。
+   small=true は投稿画面のプレビュー用で、高さをさらに抑える。 */
+function photoHTML(v, small){
+  if(typeof v !== "string") return "";
+  if(DATA_IMG_RE.test(v)){
+    return '<img class="photo-img'+(small?' sm':'')+'" alt="'+esc(T("compose.photo"))+'" src="'+v+'">';
+  }
+  var ps = photoStyle(v);
+  if(!ps) return "";
+  return '<div class="photo" style="'+ps+'"><span>'+esc(T("compose.photo"))+'</span></div>';
 }
 
 /* 選ばれた画像を、上限に収まるまで品質→寸法の順に落としながら縮小する。
@@ -782,11 +800,7 @@ function renderFeed(){
        + '<div class="post-meta"><div class="post-name">'+esc(p.name)+'</div>'
        + '<div class="post-sub">'+esc(p.dept)+' · '+esc(p.ago)+'</div></div></div>'
        + '<p class="post-text">'+esc(p.text)+'</p>';
-    var ps = p.photo ? photoStyle(p.photo) : "";
-    /* 本物の写真にはラベルを出さない。色板（旧仕様）のときだけ「写真」と添える。 */
-    if(ps) h += '<div class="photo" style="'+ps+'">'
-              + (DATA_IMG_RE.test(p.photo) ? '' : '<span>'+esc(T("compose.photo"))+'</span>')
-              + '</div>';
+    if(p.photo) h += photoHTML(p.photo);
     h += '<div class="stamps">';
     STAMPS.forEach(function(s){
       var n = c[s.k]||0, mine = !!(state.mine[p.id]&&state.mine[p.id][s.k]);
@@ -1072,7 +1086,7 @@ function openCompose(){
     slot.innerHTML = '<p class="disclaim">'+esc(T("toast.photoLoading"))+'</p>';
     readPhoto(f, function(dataUrl){
       pendingPhoto = dataUrl;
-      slot.innerHTML = '<div class="photo" style="'+photoStyle(dataUrl)+'"></div>';
+      slot.innerHTML = photoHTML(dataUrl, true);
       if(btn) btn.setAttribute("aria-pressed","true");
     }, function(why){
       pendingPhoto = null;
