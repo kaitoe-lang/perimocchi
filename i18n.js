@@ -94,6 +94,8 @@ ja: {
   you: "あなた", anon: "名無し",
   ago: { now:"たった今", min:"{n}分前", hour:"{n}時間前", yesterday:"昨日", day:"{n}日前" },
   toast: {
+    photoLoading:"写真を読み込んでいます…", photoTooBig:"この写真は大きすぎます。別の写真を選んでください",
+    photoFailed:"写真を読み込めませんでした",
     recorded:"記録しました。{mood}な一日になりますように。", posted:"投稿しました",
     writeSomething:"一言だけでも書いてみてください", welcome:"ようこそ、{name}さん",
     renamed:"なまえを変えました", enterName:"なまえを入れてください",
@@ -217,6 +219,8 @@ zh: {
   you: "你", anon: "無名氏",
   ago: { now:"剛剛", min:"{n} 分鐘前", hour:"{n} 小時前", yesterday:"昨天", day:"{n} 天前" },
   toast: {
+    photoLoading:"正在讀取照片…", photoTooBig:"這張照片太大了，請換一張",
+    photoFailed:"無法讀取照片",
     recorded:"記錄好了。希望今天是{mood}的一天。", posted:"已發布",
     writeSomething:"寫一句話也可以", welcome:"歡迎你，{name}",
     renamed:"名字改好了", enterName:"請輸入名字",
@@ -339,6 +343,8 @@ en: {
   you: "You", anon: "Anonymous",
   ago: { now:"just now", min:"{n}m ago", hour:"{n}h ago", yesterday:"yesterday", day:"{n}d ago" },
   toast: {
+    photoLoading:"Preparing your photo…", photoTooBig:"That photo is too large. Please choose another one.",
+    photoFailed:"That photo could not be read.",
     recorded:"Saved. Hope today treats you kindly.", posted:"Posted",
     writeSomething:"Even one line is enough", welcome:"Welcome, {name}",
     renamed:"Name updated", enterName:"Please enter a name",
@@ -462,6 +468,8 @@ th: {
   you: "คุณ", anon: "ไม่ระบุชื่อ",
   ago: { now:"เมื่อสักครู่", min:"{n} นาทีที่แล้ว", hour:"{n} ชั่วโมงที่แล้ว", yesterday:"เมื่อวาน", day:"{n} วันที่แล้ว" },
   toast: {
+    photoLoading:"กำลังเตรียมรูป…", photoTooBig:"รูปนี้ใหญ่เกินไป กรุณาเลือกรูปอื่น",
+    photoFailed:"อ่านรูปไม่สำเร็จ",
     recorded:"บันทึกแล้ว ขอให้วันนี้เป็นวันที่ดีนะ", posted:"โพสต์แล้ว",
     writeSomething:"เขียนแค่ประโยคเดียวก็ได้", welcome:"ยินดีต้อนรับ {name}",
     renamed:"เปลี่ยนชื่อแล้ว", enterName:"กรุณาใส่ชื่อ",

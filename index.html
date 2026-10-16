@@ -571,6 +571,65 @@ function teamSeries(){
                  });
 }
 
+/* ============ 写真 ============
+   Firebase Storage は 2024/9 の変更で Blaze（有料）プラン必須になったため使わない。
+   代わりに端末側で縮小して data URL にし、投稿ドキュメントへ直接入れる。
+   Firestore の1ドキュメント上限は約1MB。下の上限はそれに対して十分小さくとってある。
+   タイムラインは最大50件読むので、50×110KB＝約5.5MBが1回の最大転送量。
+   Sparkの無料枠（10GB/月）に対して余裕がある範囲。 */
+var PHOTO_MAX_EDGE  = 820;        /* 長辺の上限（px） */
+var PHOTO_MAX_BYTES = 110 * 1024; /* 1枚あたりの上限 */
+
+/* 投稿の photo には2種類の値が入りうる。
+   - 旧：CSSのグラデーション文字列（仮実装時代の色板。既存の投稿に残っている）
+   - 新：data:image/jpeg;base64,... （本物の写真）
+   どちらも style 属性に入れるので、入れる前に必ず形を検査する。 */
+var DATA_IMG_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+\/]+=*$/;
+var GRAD_RE     = /^linear-gradient\([#0-9a-zA-Z,.%\s-]+\)$/;
+
+function photoStyle(v){
+  if(typeof v !== "string") return "";
+  /* url() は必ずシングルクォートで囲む。style="..." の中に入るので、
+     ダブルクォートを使うと属性がそこで切れて画像が出なくなる。
+     DATA_IMG_RE で文字種を base64 に限定済みなので ' は混入しない。 */
+  if(DATA_IMG_RE.test(v)) return "background-image:url('"+v+"');background-size:cover;background-position:center";
+  if(GRAD_RE.test(v))     return "background:"+v;
+  return "";   /* 想定外の値は描画しない */
+}
+
+/* 選ばれた画像を、上限に収まるまで品質→寸法の順に落としながら縮小する。
+   成功すると ok(dataUrl)、失敗すると ng(理由) を呼ぶ。 */
+function readPhoto(file, ok, ng){
+  if(!file) return ng("none");
+  if(!/^image\//.test(file.type || "")) return ng("type");
+  var url = URL.createObjectURL(file);
+  var img = new Image();
+  img.onload = function(){
+    URL.revokeObjectURL(url);
+    var w = img.naturalWidth, h = img.naturalHeight;
+    if(!w || !h) return ng("decode");
+    var out = null, edge = PHOTO_MAX_EDGE, q = 0.7, i;
+    for(i = 0; i < 7; i++){
+      var sc = Math.min(1, edge / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * sc)), ch = Math.max(1, Math.round(h * sc));
+      var cv = document.createElement("canvas");
+      cv.width = cw; cv.height = ch;
+      var cx = cv.getContext("2d");
+      if(!cx) return ng("decode");
+      cx.fillStyle = "#fff"; cx.fillRect(0, 0, cw, ch);  /* 透過PNGが黒く出ないように */
+      cx.drawImage(img, 0, 0, cw, ch);
+      try{ out = cv.toDataURL("image/jpeg", q); }catch(e){ return ng("decode"); }
+      if(out.length <= PHOTO_MAX_BYTES) break;
+      if(q > 0.45) q -= 0.12; else edge = Math.round(edge * 0.8);
+    }
+    if(!out || out.length > PHOTO_MAX_BYTES) return ng("big");
+    if(!DATA_IMG_RE.test(out)) return ng("decode");
+    ok(out);
+  };
+  img.onerror = function(){ URL.revokeObjectURL(url); ng("decode"); };
+  img.src = url;
+}
+
 function subscribePosts(){
   if(unsubPosts) unsubPosts();
   unsubPosts = db.collection("posts").orderBy("createdAt","desc").limit(50).onSnapshot(function(sn){
@@ -723,7 +782,11 @@ function renderFeed(){
        + '<div class="post-meta"><div class="post-name">'+esc(p.name)+'</div>'
        + '<div class="post-sub">'+esc(p.dept)+' · '+esc(p.ago)+'</div></div></div>'
        + '<p class="post-text">'+esc(p.text)+'</p>';
-    if(p.photo) h += '<div class="photo" style="background:'+p.photo+'"><span>'+esc(T("compose.photo"))+'</span></div>';
+    var ps = p.photo ? photoStyle(p.photo) : "";
+    /* 本物の写真にはラベルを出さない。色板（旧仕様）のときだけ「写真」と添える。 */
+    if(ps) h += '<div class="photo" style="'+ps+'">'
+              + (DATA_IMG_RE.test(p.photo) ? '' : '<span>'+esc(T("compose.photo"))+'</span>')
+              + '</div>';
     h += '<div class="stamps">';
     STAMPS.forEach(function(s){
       var n = c[s.k]||0, mine = !!(state.mine[p.id]&&state.mine[p.id][s.k]);
@@ -991,6 +1054,7 @@ function openCompose(){
     + '<button class="stamp" id="use-topic" aria-pressed="false">'+esc(T("compose.useTopic",{topic:T("topic")}))+'</button>'
     + '<button class="stamp" id="add-photo" aria-pressed="false">'+esc(T("compose.addPhoto"))+'</button>'
     + '<span class="count tnum" id="cnt">0 / 140</span></div>'
+    + '<input type="file" id="photo-file" accept="image/*" hidden>'
     + '<div id="photo-slot"></div>'
     + '<button class="btn btn-full" data-act="submit">'+esc(T("compose.submit"))+'</button>'
     + '<p class="disclaim warnbox"><strong>'+esc(T("compose.warnStrong"))+'</strong><br>'
@@ -998,6 +1062,25 @@ function openCompose(){
   phone.appendChild(bg); phone.appendChild(sh);
   var ta=document.getElementById("compose-text");
   ta.addEventListener("input", function(){ document.getElementById("cnt").textContent = ta.value.length+" / 140"; });
+  var pf = document.getElementById("photo-file");
+  if(pf) pf.addEventListener("change", function(){
+    var f = pf.files && pf.files[0];
+    pf.value = "";                 /* 同じ写真を選び直せるようにする */
+    if(!f) return;
+    var btn  = document.getElementById("add-photo");
+    var slot = document.getElementById("photo-slot");
+    slot.innerHTML = '<p class="disclaim">'+esc(T("toast.photoLoading"))+'</p>';
+    readPhoto(f, function(dataUrl){
+      pendingPhoto = dataUrl;
+      slot.innerHTML = '<div class="photo" style="'+photoStyle(dataUrl)+'"></div>';
+      if(btn) btn.setAttribute("aria-pressed","true");
+    }, function(why){
+      pendingPhoto = null;
+      slot.innerHTML = "";
+      if(btn) btn.setAttribute("aria-pressed","false");
+      toast(T(why === "big" ? "toast.photoTooBig" : "toast.photoFailed"));
+    });
+  });
   ta.focus();
 }
 function closeCompose(){
@@ -1039,7 +1122,10 @@ function markMode(){
                  + "<br>" + esc("気分ログは常に端末内のみ")
                  + "<br>" + esc("表示言語: " + LANG_NAMES[lang]);
   }
-  var sw=document.getElementById("seedwrap"); if(sw) sw.hidden = !HAS_DB;
+  /* 「サンプル投稿を入れる」は、共有DBに架空の投稿を書き込むデモ用の機能。
+     Firestoreのルールで投稿は削除できないため、誤って押すと元に戻せない。
+     運用中は常に隠す。デモで使いたいときだけ true を !HAS_DB に戻すこと。 */
+  var sw=document.getElementById("seedwrap"); if(sw) sw.hidden = true;
 }
 
 /* ============ events ============ */
@@ -1098,12 +1184,9 @@ document.addEventListener("click", function(ev){
   if(t.id==="add-photo"){
     var onp=t.getAttribute("aria-pressed")==="true";
     var slot=document.getElementById("photo-slot");
-    if(onp){ slot.innerHTML=""; pendingPhoto=null; t.setAttribute("aria-pressed","false"); }
-    else{
-      pendingPhoto="linear-gradient(135deg,#D9E3D6,#9CB49A)";
-      slot.innerHTML='<div class="photo" style="background:'+pendingPhoto+'"><span>'+esc(T("compose.photo"))+'</span></div>';
-      t.setAttribute("aria-pressed","true");
-    }
+    if(onp){ slot.innerHTML=""; pendingPhoto=null; t.setAttribute("aria-pressed","false"); return; }
+    var pfile = document.getElementById("photo-file");
+    if(pfile) pfile.click();   /* 選ばれたあとの処理は openCompose の change で行う */
     return;
   }
 
